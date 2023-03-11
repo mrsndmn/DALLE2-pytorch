@@ -231,6 +231,60 @@ class BaseClipAdapter(nn.Module):
     def embed_image(self, image):
         raise NotImplementedError
 
+    def embed_audio(self, audio):
+        raise NotImplementedError
+
+
+class ClapAdapter(BaseClipAdapter):
+    def __init__(
+        self,
+        name = "laion/clap-htsat-fused"
+    ):
+        super().__init__(None)
+
+        from transformers import ClapModel, AutoProcessor
+
+        self.clap = ClapModel.from_pretrained(name)
+        self.processor = AutoProcessor.from_pretrained(name)
+
+        return
+
+    @property
+    def dim_latent(self):
+        return self.clip.text_config.hidden_size
+
+    @property
+    def max_text_len(self):
+        return self.clip.text_config.max_position_embeddings
+
+    @torch.no_grad()
+    def embed_text(self, text):
+
+        text = text[..., :self.max_text_len]
+        processed_text = self.processor(text=text, return_tensors="pt", padding=True)
+
+        text_outputs = self.clap.text_model(**processed_text)
+
+        pooler_output = text_outputs.pooler_output
+        last_hidden_state = text_outputs.last_hidden_state
+        last_hidden_state = last_hidden_state[1 != processed_text["attention_mask"]] = 0
+
+        return EmbeddedText(l2norm(pooler_output), last_hidden_state)
+
+
+    # @torch.no_grad()
+    # def validate_audio(self, audio):
+    #     # todo validate sample rate
+
+    @torch.no_grad()
+    def embed_audio(self, audio):
+        # todo убрать хардкод sample rate
+        processed_audio = self.processor(audios=audio, sample_rate=44100, return_tensors="pt", padding=True)
+        audio_outputs = self.clap.audio_model(**processed_audio)
+
+        return EmbeddedImage(l2norm(audio_outputs.pooler_output), audio_outputs.last_hidden_state)
+
+
 class XClipAdapter(BaseClipAdapter):
     @property
     def dim_latent(self):

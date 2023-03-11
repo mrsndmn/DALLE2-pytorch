@@ -9,6 +9,7 @@ from coca_pytorch import CoCa
 
 from dalle2_pytorch.dalle2_pytorch import (
     CoCaAdapter,
+    ClapAdapter,
     OpenAIClipAdapter,
     OpenClipAdapter,
     Unet,
@@ -119,6 +120,8 @@ class AdapterConfig(BaseModel):
     def create(self):
         if self.make == "openai":
             return OpenAIClipAdapter(self.model)
+        elif self.make == "clap":
+            return ClapAdapter(self.model)
         elif self.make == "open_clip":
             pretrained = dict(list_pretrained())
             checkpoint = pretrained[self.model]

@@ -760,7 +760,7 @@ def initialize_training(config_file, accelerator):
 @click.option("--config_file", default="configs/train_prior_config.example.json")
 def main(config_file):
     # start HFA
-    accelerator = Accelerator()
+    accelerator = Accelerator(device_placement=False)
 
     # setup training
     initialize_training(config_file, accelerator)

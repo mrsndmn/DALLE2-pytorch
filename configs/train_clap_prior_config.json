@@ -1,9 +1,5 @@
 {
     "prior": {
-        "clip": {
-            "make": "openai",
-            "model": "ViT-L/14"
-        },
         "net": {
             "dim": 768,
             "depth": 12,
@@ -40,9 +36,9 @@
         "image_url": "<path to your images>",
         "meta_url": "<path to your metadata>",
         "splits": {
-            "train": 0.8,
+            "train": 0.9,
             "val":  0.1,
-            "test": 0.1
+            "test": 0.0
         }
     },
     "train": {
@@ -63,11 +59,7 @@
         "data_path": ".prior",
         "overwrite_data_path": true,
         "log": {
-            "log_type": "wandb",
-            "wandb_entity": "<your wandb username>",
-            "wandb_project": "prior_debugging",
-            "wandb_resume": false,
-            "verbose": true
+            "log_type": "console"
         },
         "save": [
             {
