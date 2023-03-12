@@ -1141,8 +1141,10 @@ class DiffusionPriorNetwork(nn.Module):
 
         null_text_encodings = self.null_text_encodings.to(text_encodings.dtype)
 
+        text_mask = rearrange(mask, 'b n -> b n 1').clone() & text_keep_mask
+        # print("text_mask", text_mask.shape, "text_encodings", text_encodings.shape, "null_text_encodings", null_text_encodings.shape)
         text_encodings = torch.where(
-            rearrange(mask, 'b n -> b n 1').clone() & text_keep_mask,
+            text_mask,
             text_encodings,
             null_text_encodings
         )

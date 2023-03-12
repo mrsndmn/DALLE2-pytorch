@@ -51,6 +51,7 @@ class PriorEmbeddingDataset(IterableDataset):
             self.loader = self.image_reader(**loader_args)
         # otherwise, include text embeddings and bypass metadata
         else:
+            print("loader_args", loader_args)
             self.loader = zip(
                 self.image_reader(**loader_args), self.text_reader(**loader_args)
             )

@@ -21,9 +21,9 @@ parser = argparse.ArgumentParser(description="Dataset preparation script.")
 
 args = parser.parse_args()
 
-name = "laion/clap-htsat-fused"
+name = "laion/clap-htsat-unfused"
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu' if torch.cuda.is_available() else 'cpu'
 
 clap = ClapModel.from_pretrained(name).to(device).float()
 # processor =  ClapProcessor.from_pretrained(name)
@@ -33,7 +33,7 @@ dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
 audio_dir = "../audiocaps_train/"
 embeddings_dir = '../audiocaps_train_embeddings_1k/'
-count_spectrograms = 1000
+count_spectrograms = 0
 
 if count_spectrograms > 0:
     dataset = dataset.head( count_spectrograms )
@@ -42,8 +42,13 @@ if count_spectrograms > 0:
 if not os.path.isdir(embeddings_dir):
     os.mkdir(embeddings_dir)
 
-# prepare spectrogram
+if not os.path.isdir(embeddings_dir + 'audio'):
+    os.mkdir(embeddings_dir + 'audio')
 
+if not os.path.isdir(embeddings_dir + 'text'):
+    os.mkdir(embeddings_dir + 'text')
+
+# prepare spectrogram
 
 # to prepare spectrogram dataset with cli
 # ~/anaconda3_new/envs/riffusion/bin/python3.9 -m riffusion.cli audio-to-image --audio ../audiocaps_train/000AjsqXq54.wav --image ./000AjsqXq54.jpg
@@ -54,8 +59,8 @@ with torch.no_grad():
         for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc='prepare metadata'):
 
             file_name = row['youtube_id'] + '.wav'
-            audio_embedding_file_name = row['youtube_id'] + '_audio.npy'
-            text_embedding_file_name = row['youtube_id'] + '_text.npy'
+            audio_embedding_file_name = 'audio/' + row['youtube_id'] + '_audio.npy'
+            text_embedding_file_name = 'text/' + row['youtube_id'] + '_text.npy'
             full_path_audio = "../audiocaps_train/" + file_name
             audio_full_path_embedding = embeddings_dir + audio_embedding_file_name
             text_full_path_embedding = embeddings_dir + text_embedding_file_name
@@ -70,14 +75,21 @@ with torch.no_grad():
                 waveform = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
                 sample_rate = expected_sample_rate
 
-            processed_inputs = processor(text=row['caption'], audios=waveform, sampling_rate=sample_rate, return_tensors="pt", padding=True)
+            waveform = waveform[0, :]
+            waveform = waveform.numpy()
+            # print("waveform.shape", waveform.shape)
+
+            processed_inputs = processor(text=[row['caption']], audios=waveform, sampling_rate=sample_rate, return_tensors="pt")
+            # processed_inputs = processor(text=[row['caption']], audios=waveform, sampling_rate=sample_rate, return_tensors="pt", padding=True)
             # processed_inputs_text = processor( return_tensors="pt", padding=True)
+            # print("processed_inputs", processed_inputs)
+            # print("processed_inputs", processed_inputs.input_features.shape)
 
             # clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
             clap_outputs = clap(**processed_inputs)
 
-            np.save(audio_embedding_file_name, clap_outputs.audio_embeds.detach().cpu().numpy())
-            np.save(text_embedding_file_name, clap_outputs.text_embeds.detach().cpu().numpy())
+            np.save(audio_full_path_embedding, clap_outputs.audio_embeds.detach().cpu().numpy())
+            np.save(text_full_path_embedding, clap_outputs.text_embeds.detach().cpu().numpy())
 
             # todo maybe also save clap_outputs.text_model_output.last_hidden_state ?
 

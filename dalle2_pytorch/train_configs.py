@@ -207,6 +207,7 @@ class DiffusionPriorTrainConfig(BaseModel):
 
 class DiffusionPriorDataConfig(BaseModel):
     image_url: str                   # path to embeddings folder
+    txt_url: str                     # path to text embeddings folder
     meta_url: str                    # path to metadata (captions) for images
     splits: TrainSplitConfig         # define train, validation, test splits for your dataset
     batch_size: int                  # per-gpu batch size used to train the model
