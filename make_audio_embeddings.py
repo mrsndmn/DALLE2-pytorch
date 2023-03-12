@@ -13,7 +13,7 @@ import numpy as np
 import torchaudio
 import torch
 
-from transformers import ClapModel, AutoProcessor
+from transformers import ClapModel, AutoProcessor, ClapProcessor
 
 # riffusion repo must be script working directory
 
@@ -23,10 +23,11 @@ args = parser.parse_args()
 
 name = "laion/clap-htsat-fused"
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-clap = ClapModel.from_pretrained(name)
-processor = AutoProcessor.from_pretrained(name)
-
+clap = ClapModel.from_pretrained(name).to(device).float()
+# processor =  ClapProcessor.from_pretrained(name)
+processor =  AutoProcessor.from_pretrained(name)
 
 dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
@@ -63,14 +64,17 @@ with torch.no_grad():
                 continue
 
             waveform, sample_rate = torchaudio.load(full_path_audio)
-            if sample_rate != 44100:
-                waveform = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=44100)
-                sample_rate = 44100
 
-            processed_inputs_audio = processor(audios=waveform, sample_rate=44100, return_tensors="pt", padding=True)
-            processed_inputs_text = processor(text=row['caption'], return_tensors="pt", padding=True)
+            expected_sample_rate = 48000
+            if sample_rate != expected_sample_rate:
+                waveform = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
+                sample_rate = expected_sample_rate
 
-            clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
+            processed_inputs = processor(text=row['caption'], audios=waveform, sampling_rate=sample_rate, return_tensors="pt", padding=True)
+            # processed_inputs_text = processor( return_tensors="pt", padding=True)
+
+            # clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
+            clap_outputs = clap(**processed_inputs)
 
             np.save(audio_embedding_file_name, clap_outputs.audio_embeds.detach().cpu().numpy())
             np.save(text_embedding_file_name, clap_outputs.text_embeds.detach().cpu().numpy())
