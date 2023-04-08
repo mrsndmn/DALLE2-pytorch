@@ -23,7 +23,7 @@ args = parser.parse_args()
 
 name = "laion/clap-htsat-unfused"
 
-device = 'cpu' if torch.cuda.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 clap = ClapModel.from_pretrained(name).to(device).float()
 # processor =  ClapProcessor.from_pretrained(name)
@@ -86,6 +86,9 @@ with torch.no_grad():
             # print("processed_inputs", processed_inputs.input_features.shape)
 
             # clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
+            for k, v in processed_inputs.items():
+                processed_inputs[k] = v.to(device)
+
             clap_outputs = clap(**processed_inputs)
 
             np.save(audio_full_path_embedding, clap_outputs.audio_embeds.detach().cpu().numpy())

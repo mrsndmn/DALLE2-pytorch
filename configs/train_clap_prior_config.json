@@ -44,7 +44,7 @@
     },
     "train": {
         "epochs": 5,
-        "lr": 1.1e-4,
+        "lr": 0.3e-4,
         "wd": 6.02e-2,
         "max_grad_norm": 0.5,
         "use_ema": true,
@@ -60,7 +60,11 @@
         "data_path": ".prior",
         "overwrite_data_path": true,
         "log": {
-            "log_type": "console"
+            "log_type": "wandb",
+            "wandb_entity": "hsemrsndmn",
+            "wandb_project": "prior_debugging",
+            "wandb_resume": false,
+            "verbose": true
         },
         "save": [
             {
