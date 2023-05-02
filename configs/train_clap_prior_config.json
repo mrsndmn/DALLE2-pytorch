@@ -30,12 +30,12 @@
         "condition_on_text_encodings": false
     },
     "data": {
-        "batch_size": 32,
+        "batch_size": 128,
         "num_data_points": 100000,
         "eval_every_seconds": 1600,
-        "image_url": "../audiocaps_train_embeddings_1k/audio",
-        "txt_url": "../audiocaps_train_embeddings_1k/text",
-        "meta_url": "../audiocaps_train_embeddings_1k/metadata.jsonl",
+        "image_url": "../data/audiocaps_train_embeddings_1k/audio",
+        "txt_url": "../data/audiocaps_train_embeddings_1k/text",
+        "meta_url": "../data/audiocaps_train_embeddings_1k/metadata.jsonl",
         "splits": {
             "train": 0.8,
             "val":  0.1,
@@ -44,7 +44,7 @@
     },
     "train": {
         "epochs": 5,
-        "lr": 0.3e-4,
+        "lr": 1.1e-4,
         "wd": 6.02e-2,
         "max_grad_norm": 0.5,
         "use_ema": true,
