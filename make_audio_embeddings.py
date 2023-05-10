@@ -33,7 +33,7 @@ dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
 audio_dir = "../audiocaps_train/"
 embeddings_dir = '../audiocaps_train_embeddings_1k/'
-count_spectrograms = 0
+count_spectrograms = 1000
 
 if count_spectrograms > 0:
     dataset = dataset.head( count_spectrograms )

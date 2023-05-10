@@ -270,6 +270,8 @@ def create_loader(loader_type: str, data_path: str, **kwargs) -> BaseLoader:
         loader_class = loader_type_map[loader_type]
     except KeyError:
         raise ValueError(f'Unknown loader type: {loader_type}. Must be one of {list(loader_type_map.keys())}')
+
+    return LocalLoader(data_path, file_path='.decoder/best_checkpoint_first_attempt.pth')
     return loader_class(data_path, **kwargs)
 
 class BaseSaver:

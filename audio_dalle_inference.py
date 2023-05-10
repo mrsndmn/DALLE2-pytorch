@@ -5,6 +5,8 @@ import sys
 import os
 from tqdm.auto import tqdm
 
+import numpy as np
+
 from pathlib import Path
 import PIL
 
@@ -17,6 +19,12 @@ import numpy as np
 import torchaudio
 import torch
 
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/diffusers/src')
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch')
+
+from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig
+
 from transformers import ClapTextModelWithProjection, AutoTokenizer
 
 from dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior
@@ -24,8 +32,7 @@ from dalle2_pytorch.train_configs import TrainDiffusionPriorConfig
 
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 
-from accelerate import Accelerator
-from riffusion.riffusion_pipeline import RiffusionPipeline, preprocess_image
+from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist, spectral_normalize_torch
 
 # riffusion repo must be script working directory
 
@@ -34,83 +41,84 @@ from riffusion.riffusion_pipeline import RiffusionPipeline, preprocess_image
 # args = parser.parse_args()
 
 # input_text = args.input
-input_text = "test"
+
+input_text = "Person is whistling"
 
 name = "laion/clap-htsat-unfused"
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-print("device", device)
+do_clap_evaluation = False
 
-print("getting model")
-clap = ClapTextModelWithProjection.from_pretrained(name).to(device).float()
-# processor =  ClapProcessor.from_pretrained(name)
-print("getting tokenizer")
-tokenizer =  AutoTokenizer.from_pretrained(name)
+if do_clap_evaluation:
+
+    print("device", device)
+
+    print("getting model")
+    clap = ClapTextModelWithProjection.from_pretrained(name).to(device).float()
+    # processor =  ClapProcessor.from_pretrained(name)
+    print("getting tokenizer")
+    tokenizer =  AutoTokenizer.from_pretrained(name)
 
 
-print("run tokenizer prompt", input_text)
-processed_inputs_text = tokenizer(text=[ input_text ], padding=True, return_tensors="pt")
+    print("run tokenizer prompt", input_text)
+    processed_inputs_text = tokenizer(text=[ input_text ], padding=True, return_tensors="pt")
 
-print("run clap")
-clap_text_outputs = clap(**processed_inputs_text)
+    print("run clap")
+    clap_text_outputs = clap(**processed_inputs_text)
 
-print("clap_text_outputs.text_embeds.shape", clap_text_outputs.text_embeds.shape)
+    print("clap_text_outputs.text_embeds.shape", clap_text_outputs.text_embeds.shape) # [ 1, 512 ]
 
-prior_train_state = torch.load('.prior/best_checkpoint.pth', map_location=device)
+    prior_train_state = torch.load('.prior/best_checkpoint.pth', map_location=device)
 
-config = TrainDiffusionPriorConfig.from_json_path('configs/train_clap_prior_config.json')
+    config = TrainDiffusionPriorConfig.from_json_path('configs/train_clap_prior_config.json')
 
-diffusionPrior: DiffusionPrior = config.prior.create()
-diffusionPrior.load_state_dict(prior_train_state['model'])
+    diffusionPrior: DiffusionPrior = config.prior.create()
+    diffusionPrior.load_state_dict(prior_train_state['model'])
 
-image_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shape, text_cond = { "text_embed": clap_text_outputs.text_embeds } )
+    clap_text_embeddings_normalized = clap_text_outputs.text_embeds / clap_text_outputs.text_embeds.norm(p=2, dim=-1, keepdim=True)
 
-print("image_embedds.shape", image_embedds.shape) # [ 1, 512 ]
+    audio_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shape, text_cond = { "text_embed": clap_text_embeddings_normalized } )
+    audio_embedds = audio_embedds / audio_embedds.norm(p=2, dim=-1, keepdim=True)
 
-# todo make riffusion generation and vocoder
+    # todo make riffusion generation and vocoder
+else :
+    import numpy as np
+    loaded_audio_embeddings = torch.from_numpy(np.load("../data/audiocaps_train_embeddings_1k/audio/3eGXNIadwGk_audio.npy"))
+    audio_embedds = loaded_audio_embeddings
 
-riffusion_checkpoint_path = '/home/dtarasov/workspace/hse-audio-dalle2/riffusion/sd-model-finetuned/checkpoint-45000'
+print("image_embedds.shape", audio_embedds.shape) # [ 1, 512 ]
+
+decoder_config_path = 'configs/train_decoder_config.audio.json'
+
+from train_decoder import create_tracker, recall_trainer, generate_samples
+from dalle2_pytorch.trainer import DecoderTrainer
+from accelerate import Accelerator
+
+from torchvision.transforms import Resize
 
 accelerator = Accelerator()
+config = TrainDecoderConfig.from_json_path(str(decoder_config_path))
+tracker = create_tracker(accelerator, config, decoder_config_path, dummy=False)
 
-unet = UNet2DConditionModel.from_pretrained(
-    'riffusion/riffusion-model-v1', subfolder="unet", revision=None
+decoder = config.decoder.create()
+
+trainer = DecoderTrainer(
+    decoder=decoder,
+    accelerator=accelerator,
 )
 
-unet = accelerator.prepare(unet)
+recall_trainer(tracker, trainer)
 
-accelerator.load_state(riffusion_checkpoint_path)
+examples = [[ torch.rand([ 1, 16, 128 ]), audio_embedds[0, :], None, "" ]]
+
+real_images, generated_images, captions = generate_samples(trainer, examples, device=device)
+
+print(generated_images[0].shape)
+
+resizer = Resize(size=(80, 1024))
+resized_generated_image = resizer( generated_images[0] )
+
+np.save(".decoder/test_melspec_sample_generated.npy", np.array(spectral_normalize_torch(resized_generated_image)))
 
 
-riffusion = RiffusionPipeline.load_checkpoint(riffusion_checkpoint_path, device=device)
-
-generator_start = torch.Generator(device="cpu").manual_seed(42)
-generator_end = torch.Generator(device="cpu").manual_seed(43)
-generator_latents = torch.Generator(device="cpu").manual_seed(44)
-
-init_image_path = Path("/home/dtarasov/workspace/hse-audio-dalle2/riffusion/seed_images/agile.png")
-
-init_image = PIL.Image.open(str(init_image_path)).convert("RGB")
-
-init_image_torch = preprocess_image(init_image).to(
-    device=riffusion.device, dtype=image_embedds.dtype
-)
-init_image_torch.unsqueeze_(0)
-
-init_latent_dist = riffusion.vae.encode(init_image_torch).latent_dist
-init_latents = init_latent_dist.sample(generator=generator_latents)
-init_latents = 0.18215 * init_latents
-
-riffusion_generated_spectrogram = riffusion.interpolate_img2img(
-    text_embeddings=image_embedds,
-    init_latents=init_latents,
-    mask=None,
-    generator_a=generator_start,
-    generator_b=generator_end,
-    interpolate_alpha=0.5,
-    strength_a=1.0,
-    strength_b=1.0,
-    # num_inference_steps=50,
-    # guidance_scale=7.5,
-)

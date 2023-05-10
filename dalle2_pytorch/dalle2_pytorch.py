@@ -172,6 +172,7 @@ def resize_image_to(
     if orig_image_size == target_image_size:
         return image
 
+    assert nearest, "nearest must be true!"
     if not nearest:
         scale_factors = target_image_size / orig_image_size
         out = resize(image, scale_factors = scale_factors, **kwargs)
@@ -2285,6 +2286,7 @@ class Unet(nn.Module):
 
         if self.cond_on_image_embeds:
             image_keep_mask_embed = rearrange(image_keep_mask, 'b -> b 1 1')
+            # print("image_embed.shape", image_embed.shape)
             image_tokens = self.image_to_tokens(image_embed)
             null_image_embed = self.null_image_embed.to(image_tokens.dtype) # for some reason pytorch AMP not working
 
@@ -2516,7 +2518,7 @@ class Decoder(nn.Module):
         unet,
         *,
         clip = None,
-        image_size = None,
+        # image_size = None,
         channels = 3,
         vae = tuple(),
         timesteps = 1000,
@@ -2572,13 +2574,13 @@ class Decoder(nn.Module):
 
         # determine image size, with image_size and image_sizes taking precedence
 
-        if exists(image_size) or exists(image_sizes):
-            assert exists(image_size) ^ exists(image_sizes), 'only one of image_size or image_sizes must be given'
-            image_size = default(image_size, lambda: image_sizes[-1])
-        elif exists(clip):
-            image_size = clip.image_size
-        else:
-            raise Error('either image_size, image_sizes, or clip must be given to decoder')
+        # if exists(image_size) or exists(image_sizes):
+        #     assert exists(image_size) ^ exists(image_sizes), 'only one of image_size or image_sizes must be given'
+        #     image_size = default(image_size, lambda: image_sizes[-1])
+        # elif exists(clip):
+        #     image_size = clip.image_size
+        # else:
+        #     raise Error('either image_size, image_sizes, or clip must be given to decoder')
 
         # channels
 
@@ -2683,9 +2685,10 @@ class Decoder(nn.Module):
 
         # unet image sizes
 
-        image_sizes = default(image_sizes, (image_size,))
-        image_sizes = tuple(sorted(set(image_sizes)))
+        # image_sizes = default(image_sizes, (image_size,))
+        # image_sizes = tuple(sorted(set(image_sizes)))
 
+        print("image_sizes", image_sizes)
         assert self.num_unets == len(image_sizes), f'you did not supply the correct number of u-nets ({self.num_unets}) for resolutions {image_sizes}'
         self.image_sizes = image_sizes
         self.sample_channels = cast_tuple(self.channels, len(image_sizes))
@@ -2705,7 +2708,7 @@ class Decoder(nn.Module):
 
         # input image range
 
-        self.input_image_range = (-1. if not auto_normalize_img else 0., 1.)
+        self.input_image_range = (0. , 1.)
 
         # cascading ddpm related stuff
 
@@ -3215,7 +3218,7 @@ class Decoder(nn.Module):
                 # prepare low resolution conditioning for upsamplers
 
                 lowres_cond_img = lowres_noise_level = None
-                shape = (batch_size, channel, image_size, image_size)
+                shape = (batch_size, channel, image_size[0], image_size[1])
 
                 if unet.lowres_cond:
                     lowres_cond_img = resize_image_to(img, target_image_size = image_size, clamp_range = self.input_image_range, nearest = True)
@@ -3228,7 +3231,7 @@ class Decoder(nn.Module):
 
                 is_latent_diffusion = isinstance(vae, VQGanVAE)
                 image_size = vae.get_encoded_fmap_size(image_size)
-                shape = (batch_size, vae.encoded_dim, image_size, image_size)
+                shape = (batch_size, vae.encoded_dim, image_size[0], image_size[1])
 
                 lowres_cond_img = maybe(vae.encode)(lowres_cond_img)
 
@@ -3287,7 +3290,7 @@ class Decoder(nn.Module):
         b, c, h, w, device, = *image.shape, image.device
 
         check_shape(image, 'b c h w', c = self.channels)
-        assert h >= target_image_size and w >= target_image_size
+        assert h >= target_image_size[1] and w >= target_image_size[0]
 
         times = torch.randint(0, noise_scheduler.num_timesteps, (b,), device = device, dtype = torch.long)
 

@@ -669,7 +669,7 @@ class DecoderTrainer(nn.Module):
     @decoder_sample_in_chunks
     def sample(self, *args, **kwargs):
         distributed = self.accelerator.num_processes > 1
-        base_decoder = self.accelerator.unwrap_model(self.decoder)
+        base_decoder: Decoder = self.accelerator.unwrap_model(self.decoder)
 
         was_training = base_decoder.training
         base_decoder.eval()
