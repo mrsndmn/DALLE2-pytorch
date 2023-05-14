@@ -116,14 +116,22 @@ def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
     """
     for sample in samples:
 
+        if 'melspectrogram.npy' not in sample:
+            print("'melspectrogram.npy' not in sample", list(sample.keys()))
+            continue
+        if 'audio_emb.npy' not in sample:
+            print("'audio_emb.npy' not in sample", list(sample.keys()))
+            continue
+
         sample['audio_emb'] = sample.pop('audio_emb.npy')
         sample['audio_melspec'] = sample.pop('melspectrogram.npy')
 
-        if sample['audio_melspec'].shape[-1] < 1024:
+        audio_max_len = 512
+        if sample['audio_melspec'].shape[-1] < audio_max_len:
             print("too little item:", sample['audio_melspec'].shape)
             continue
 
-        sample['audio_melspec'] = sample['audio_melspec'][:, : , :1024]
+        sample['audio_melspec'] = sample['audio_melspec'][:, : , :audio_max_len]
 
         try:
             for key in required_keys:
@@ -283,9 +291,14 @@ def create_audio_embedding_dataloader(
 
     def my_collate_fn(batch):
 
+
+        # audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 1, 3)
+        audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 3, 1)
+        print("audio_melspec_stacked", audio_melspec_stacked.shape)
+
         return {
             "audio_emb": torch.stack([ torch.tensor(x['audio_emb']) for x in batch ])[:, 0, :],
-            "audio_melspec": torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 1, 3),
+            "audio_melspec": audio_melspec_stacked,
             "txt":[ x['txt'] for x in batch ],
         }
 
@@ -296,5 +309,6 @@ def create_audio_embedding_dataloader(
         prefetch_factor=2,  # This might be good to have high so the next npy file is prefetched
         pin_memory=True,
         shuffle=False,
-        collate_fn=my_collate_fn
+        collate_fn=my_collate_fn,
+        drop_last=True,
     )

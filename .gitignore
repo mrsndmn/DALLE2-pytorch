@@ -119,6 +119,8 @@ ENV/
 env.bak/
 venv.bak/
 
+.decoder*
+
 # Spyder project settings
 .spyderproject
 .spyproject

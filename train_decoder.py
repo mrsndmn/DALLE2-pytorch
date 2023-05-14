@@ -67,8 +67,10 @@ def create_dataloaders(
 
     # The shard number in the webdataset file names has a fixed width. We zero pad the shard numbers so they correspond to a filename.
     train_urls  = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]
-    test_urls   = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
-    val_urls    = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
+    print("train_urls", train_urls)
+    # todo rm
+    test_urls   = [ *train_urls ] # [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
+    val_urls    = [ *train_urls ] # [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
 
     create_dataloader = lambda tar_urls, shuffle=False, resample=False, for_sampling=False: create_audio_embedding_dataloader(
         tar_url=tar_urls,
@@ -90,9 +92,9 @@ def create_dataloaders(
     train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
     train_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)
 
-    val_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)
-    test_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
-    test_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)
+    val_dataloader = create_dataloader(val_urls, shuffle=False, for_sampling=True)
+    test_dataloader = create_dataloader(test_urls, shuffle=shuffle_train, resample=resample_train)
+    test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)
     # val_dataloader = create_dataloader(val_urls, shuffle=False)
     # test_dataloader = create_dataloader(test_urls, shuffle=False)
     # test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)
@@ -121,7 +123,12 @@ def get_example_data(dataloader, device, n=5):
     audio_melspectrograms = []
     text_embeddings = []
     captions = []
+
+    if n == 0:
+        return []
+
     for batch_item in dataloader:
+        # print("get_example_data batch_item", batch_item)
         audio_melspec = batch_item['audio_melspec']
         audio_emb = batch_item['audio_emb']
         txt = batch_item['txt']
@@ -138,17 +145,21 @@ def get_example_data(dataloader, device, n=5):
         else:
             # Then we add None img.shape[0] times
             audio_embeddings.extend([None]*audio_melspec.shape[0])
-        # if text_emb is not None:
-        #     text_emb = text_emb.to(device=device, dtype=torch.float)
-        #     text_embeddings.extend(list(text_emb))
-        # else:
-        #     # Then we add None img.shape[0] times
-        #     text_embeddings.extend([None]*audio_melspec.shape[0])
+        if text_emb is not None:
+            text_emb = text_emb.to(device=device, dtype=torch.float)
+            text_embeddings.extend(list(text_emb))
+        else:
+            # Then we add None img.shape[0] times
+            text_embeddings.extend([None]*audio_melspec.shape[0])
+
         audio_melspec = audio_melspec.to(device=device, dtype=torch.float)
         audio_melspectrograms.extend(list(audio_melspec))
-        # captions.extend(list(txt))
+        captions.extend(list(txt))
         if len(audio_melspectrograms) >= n:
             break
+
+    # print("audio_melspectrograms", len(audio_melspectrograms))
+    # print("audio_embeddings", len(audio_embeddings))
     return list(zip(audio_melspectrograms[:n], audio_embeddings[:n], text_embeddings[:n], captions[:n]))
 
 def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=True):
@@ -156,7 +167,7 @@ def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_une
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
     """
-    print("example_data", example_data)
+    # print("example_data", example_data)
     real_images, img_embeddings, text_embeddings, txts = zip(*example_data)
     sample_params = {}
     if img_embeddings[0] is None:
@@ -188,12 +199,12 @@ def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_une
         sample_params["image"] = torch.stack(real_images)
     if device is not None:
         sample_params["_device"] = device
-    print("sample_params", sample_params)
+    # print("sample_params", sample_params)
     samples = trainer.sample(**sample_params, _cast_deepspeed_precision=False)  # At sampling time we don't want to cast to FP16
     generated_images = list(samples)
     captions = [text_prepend + txt for txt in txts]
     if match_image_size:
-        generated_image_size = generated_images[0].shape[-1]
+        generated_image_size = generated_images[0].shape
         real_images = [resize_image_to(image, generated_image_size, clamp_range=(0, 1)) for image in real_images]
     return real_images, generated_images, captions
 
@@ -202,9 +213,12 @@ def generate_grid_samples(trainer, examples, clip=None, start_unet=1, end_unet=N
     Generates samples and uses torchvision to put them in a side by side grid for easy viewing
     """
     real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)
-    grid_images = [torchvision.utils.make_grid([original_image, generated_image]) for original_image, generated_image in zip(real_images, generated_images)]
+    grid_images = []
+    for original_image, generated_image in zip(real_images, generated_images):
+        grid_images.append(torchvision.utils.make_grid([original_image, generated_image]))
+
     return grid_images, captions
-                    
+
 def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=None, condition_on_text_encodings=False, cond_scale=1.0, inference_device=None, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
     """
     Computes evaluation metrics for the decoder
@@ -321,6 +335,8 @@ def train(
     # Remove non-trainable unets
     move_unets(unet_training_mask)
 
+    print("decoder trainable params:", sum(p.numel() for p in decoder.parameters() if p.requires_grad))
+
     trainer = DecoderTrainer(
         decoder=decoder,
         accelerator=accelerator,
@@ -350,11 +366,15 @@ def train(
     accelerator.print(print_ribbon("Generating Example Data", repeat=40))
     accelerator.print("This can take a while to load the shard lists...")
     if is_master:
+        # todo rm
+        # train_example_data = [] # get_example_data(dataloaders["train_sampling"], inference_device, n_sample_images)
         train_example_data = get_example_data(dataloaders["train_sampling"], inference_device, n_sample_images)
         accelerator.print("Generated training examples", len(train_example_data))
+        # todo rm
+        # test_example_data = [] # get_example_data(dataloaders["test_sampling"], inference_device, n_sample_images)
         test_example_data = get_example_data(dataloaders["test_sampling"], inference_device, n_sample_images)
         accelerator.print("Generated testing examples", len(test_example_data))
-    
+
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
 
     sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)
@@ -471,6 +491,10 @@ def train(
             i = 0
             for i, batch_item in enumerate(dataloaders['val']):  # Use the accelerate prepared loader
 
+                print("validation batch i", i)
+                if i >= 100:
+                    break
+
                 audio_melspec = batch_item['audio_melspec']
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
@@ -520,10 +544,14 @@ def train(
                     samples_per_sec = (val_sample - last_val_sample) / timer.elapsed()
                     timer.reset()
                     last_val_sample = val_sample
+
+                    if average_val_loss_tensor.isnan().sum():
+                        raise Exception(f"Loss has nan: {average_val_loss_tensor}")
+
                     accelerator.print(f"Epoch {epoch}/{epochs} Val Step {i} -  Sample {val_sample} - {samples_per_sec:.2f} samples/sec")
                     accelerator.print(f"Loss: {(average_val_loss_tensor / (i+1))}")
                     accelerator.print("")
-                
+
                 if validation_samples is not None and val_sample >= validation_samples:
                     break
             print(f"Rank {accelerator.state.process_index} finished validation after {i} steps")

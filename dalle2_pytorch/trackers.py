@@ -231,6 +231,7 @@ class LocalLoader(BaseLoader):
 
     def recall(self) -> dict:
         # Load the file
+        print("loading checkpoint from", str(self.file_path))
         return torch.load(str(self.file_path), map_location='cpu')
 
 class WandbLoader(BaseLoader):
@@ -271,7 +272,7 @@ def create_loader(loader_type: str, data_path: str, **kwargs) -> BaseLoader:
     except KeyError:
         raise ValueError(f'Unknown loader type: {loader_type}. Must be one of {list(loader_type_map.keys())}')
 
-    return LocalLoader(data_path, file_path='.decoder/best_checkpoint_first_attempt.pth')
+    return LocalLoader(data_path, file_path='.decoder/best_checkpoint.pth') # CHANGE EVERYWHERE HARDCODE PROBLEM ATTENTION
     return loader_class(data_path, **kwargs)
 
 class BaseSaver:

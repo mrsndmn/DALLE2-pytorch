@@ -15,13 +15,15 @@ import argparse
 import torchaudio
 import webdataset as wds
 
-
-sys.path.append("/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan")
+sys.path.insert(0, "/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch")
+sys.path.insert(0, "/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan")
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
 
 from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist
 
 import numpy as np
 from tqdm.auto import tqdm
+from transformers import ClapModel, AutoProcessor, ClapProcessor
 
 # riffusion repo must be script working directory
 
@@ -31,39 +33,30 @@ parser.add_argument("--prepare-spectrograms", default=False, action='store_true'
 
 args = parser.parse_args()
 
+name = "laion/clap-htsat-unfused"
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+clap = ClapModel.from_pretrained(name).to(device).float()
+# processor =  ClapProcessor.from_pretrained(name)
+processor =  AutoProcessor.from_pretrained(name)
+
 dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
 audio_dir = "../data/audiocaps_train/"
-audio_melspectrogram_dir = "../data/audiocaps_train_embeddings_1k/melspectrograms/"
-audio_embeddings_dir = "../data/audiocaps_train_embeddings_1k/audio_embeddings/"
 
-orig_audio_embeddings_dir = "../data/audiocaps_train_embeddings_1k/audio/"
+webdataset_dir = "../data/audiocaps_train_embeddings/webdataset/"
 
-webdataset_dir = "../data/audiocaps_train_embeddings_1k/webdataset/"
-
-webdataset_tar = "../data/audiocaps_train_embeddings_1k/webdataset-0000.tar"
-
-couny_spectrograms = 1000
-# couny_spectrograms = 0
+# couny_spectrograms = 1000
+couny_spectrograms = 0
 
 if couny_spectrograms > 0:
     dataset = dataset.head( couny_spectrograms )
 
-if not os.path.isdir(audio_melspectrogram_dir):
-    os.mkdir(audio_melspectrogram_dir)
-
 if not os.path.isdir(webdataset_dir):
     os.mkdir(webdataset_dir)
 
-if not os.path.isdir(audio_embeddings_dir):
-    os.mkdir(audio_embeddings_dir)
-
-# prepare spectrogram
-
 audio_dir_files = set(os.listdir(audio_dir))
-orig_audio_embeddings_files = set(os.listdir(orig_audio_embeddings_dir))
-audio_embeddings_files = set(os.listdir(audio_embeddings_dir))
-mel_spectrogram_files = set(os.listdir(audio_melspectrogram_dir))
 
 nfft = 1024
 num_mels = 80
@@ -72,57 +65,65 @@ win_size = 1024
 fmin = 0
 fmax = 8000
 
-shard_num = '0000'
 
-sink = wds.TarWriter(webdataset_tar)
+webdataset_shard = 0
+sink = None
 
 def process_dataset_idx(i):
+
+    current_shard = i // 1000
+    global sink, webdataset_shard
+    if sink is None or webdataset_shard != current_shard:
+        webdataset_shard = current_shard
+        webdataset_tar = webdataset_dir + "webdataset-{:03d}.tar".format(webdataset_shard)
+        print("reopen dataset tar:", webdataset_tar)
+
+        if sink is not None:
+            sink.close()
+        sink = wds.TarWriter(webdataset_tar)
+
     try:
         row = dataset.iloc[i]
 
         file_name = row['youtube_id'] + '.wav'
-        orig_audio_embedding_file_name = row['youtube_id'] + "_audio.npy"
-
-        audio_embedding_file_name = shard_num + "{:04d}".format(i) + '.npy'
-        melspectrogram_file_name = shard_num + "{:04d}".format(i) + '.npy'
-
-        webdataset_audio_embedding_file_name = shard_num + "{:04d}".format(i) + '.audo_embedding.npy'
-        webdataset_melspectrogram_file_name  = shard_num + "{:04d}".format(i) + '.melspectrogram.npy'
-
-        if orig_audio_embedding_file_name not in orig_audio_embeddings_files:
-            print("orig_audio_embedding_file_name not foud", orig_audio_embedding_file_name)
-            return
 
         if file_name not in audio_dir_files:
             print("file_name not foud", file_name)
             return
-
-        orig_path_for_audio_embeggins = orig_audio_embeddings_dir + orig_audio_embedding_file_name
-        target_path_for_audio_embeggins = audio_melspectrogram_dir + melspectrogram_file_name
-        target_webdataset_path_for_audio_embeggins = webdataset_dir + webdataset_audio_embedding_file_name
-        # shutil.copyfile(orig_path_for_audio_embeggins, target_path_for_audio_embeggins)
-        # shutil.copyfile(orig_path_for_audio_embeggins, target_webdataset_path_for_audio_embeggins)
 
         fill_path_audio = audio_dir + file_name
 
         waveform, sample_rate = torchaudio.load(fill_path_audio)
 
         waveform = waveform[:1, :]
+        expected_sample_rate = 48000 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 22050 sampling rate
+        if sample_rate != expected_sample_rate:
+            waveform = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
+            sample_rate = expected_sample_rate
 
-        mel = mel_spectrogram(waveform, nfft, num_mels, sample_rate, hop_size, win_size, fmin, fmax, center=False)
+        processed_inputs = processor(text=[row['caption']], audios=waveform[0, :].numpy(), sampling_rate=sample_rate, return_tensors="pt")
+        # processed_inputs = processor(text=[row['caption']], audios=waveform, sampling_rate=sample_rate, return_tensors="pt", padding=True)
+        # processed_inputs_text = processor( return_tensors="pt", padding=True)
+        # print("processed_inputs", processed_inputs)
+        # print("processed_inputs", processed_inputs.input_features.shape)
+
+        # clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
+        for k, v in processed_inputs.items():
+            processed_inputs[k] = v.to(device)
+
+        clap_outputs = clap(**processed_inputs)
+
+        expected_sample_rate = 22050 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 22050 sampling rate
+        waveform22 = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
+
+        mel = mel_spectrogram(waveform22, nfft, num_mels, sample_rate, hop_size, win_size, fmin, fmax, center=False)
         mel = torch.exp(mel)
-
-        full_audio_embedding_file_name = audio_embeddings_dir + audio_embedding_file_name
-        # np.save(full_audio_embedding_file_name, np.array(mel))
-
-        full_webdataset_melspectrogram_file_name = webdataset_dir + webdataset_melspectrogram_file_name
-        # np.save(full_webdataset_melspectrogram_file_name, np.array(mel))
-
 
         sink.write({
             "__key__": "sample{:04d}".format(i),
             "melspectrogram.npy": np.array(mel),
-            "audio_emb.npy": np.load(orig_path_for_audio_embeggins),
+            "audio_emb.npy": clap_outputs.audio_embeds.detach().cpu().numpy(),
+            "text_emb.npy": clap_outputs.text_embeds.detach().cpu().numpy(),
             "txt": row['caption']
         })
 
@@ -144,6 +145,5 @@ sink.close()
 
 #     result = list(tqdm(pool.imap(process_dataset_idx, range(len(dataset))), total=len(dataset), desc='prepare spectrograms'))
 
-print("sprctrogram files are prepared:", audio_melspectrogram_dir)
 print("audio embedding files are prepared:", audio_embeddings_dir)
 

@@ -168,16 +168,20 @@ def resize_image_to(
     **kwargs
 ):
     orig_image_size = image.shape[-1]
+    # print("resize_image_to: orig_image_size", image.shape, "target_image_size", target_image_size)
 
     if orig_image_size == target_image_size:
         return image
 
-    assert nearest, "nearest must be true!"
-    if not nearest:
-        scale_factors = target_image_size / orig_image_size
-        out = resize(image, scale_factors = scale_factors, **kwargs)
-    else:
-        out = F.interpolate(image, target_image_size, mode = 'nearest')
+    # assert nearest, "nearest must be true!"
+    # if not nearest:
+    #     scale_factors = target_image_size / orig_image_size
+    #     out = resize(image, scale_factors = scale_factors, **kwargs)
+    # else:
+    from torchvision.transforms import Resize
+    resizer = Resize(size=(target_image_size[-2], target_image_size[-1]))
+
+    out = resizer(image)
 
     if exists(clamp_range):
         out = out.clamp(*clamp_range)
@@ -2907,6 +2911,8 @@ class Decoder(nn.Module):
         if not is_latent_diffusion:
             lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)
 
+        # todo rm
+        # for time in tqdm(reversed(range(0, 1)), desc = 'sampling loop time step', total = 1):
         for time in tqdm(reversed(range(0, noise_scheduler.num_timesteps)), desc = 'sampling loop time step', total = noise_scheduler.num_timesteps):
             is_last_timestep = time == 0
 
@@ -3290,7 +3296,7 @@ class Decoder(nn.Module):
         b, c, h, w, device, = *image.shape, image.device
 
         check_shape(image, 'b c h w', c = self.channels)
-        assert h >= target_image_size[1] and w >= target_image_size[0]
+        assert h >= target_image_size[0] and w >= target_image_size[1]
 
         times = torch.randint(0, noise_scheduler.num_timesteps, (b,), device = device, dtype = torch.long)
 
