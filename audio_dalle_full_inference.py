@@ -44,11 +44,17 @@ from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist, spectr
 
 # input_text = args.input
 
-input_text = "A duck quacks"
-# input_text = "Dogs bark nearby"
-# input_text = "Birds chirping and tweeting"
-# input_text = "A device sprays a liquid"
-# input_text = "A fly buzzes as the mic picks up wind and birds chirp in the background"
+input_texts = [
+    "A duck quacks",
+    "A cat is meowing"
+    "A cat meows",
+    "Dogs bark nearby",
+    "Birds chirping and tweeting",
+    "A fly buzzes",
+    "A man talks",
+    "A man talks loudly",
+    "A man talks silently",
+]
 
 name = "laion/clap-htsat-unfused"
 
@@ -65,8 +71,8 @@ clap = ClapTextModelWithProjection.from_pretrained(name).float()
 print("getting tokenizer")
 tokenizer =  AutoTokenizer.from_pretrained(name)
 
-print("run tokenizer prompt", input_text)
-processed_inputs_text = tokenizer(text=[ input_text ], padding=True, return_tensors="pt")
+print("run tokenizer prompt", input_texts)
+processed_inputs_text = tokenizer(text=input_texts, padding=True, return_tensors="pt")
 
 print("run clap")
 clap_text_outputs = clap(**processed_inputs_text)
@@ -114,30 +120,31 @@ else:
     raise Exception("\n\n\n!!!!NO RECALL WAS CALLED!!!!\n\n\n")
 
 audio_embedds_normalized = audio_embedds / audio_embedds.norm(p=2, dim=-1, keepdim=True)
-examples = [
-    [ torch.rand([ 1, 80, 512 ]).to(device), audio_embedds_normalized[0, :].to(device), None, "" ],
-    # [ torch.rand([ 1, 80, 512 ]), audio_embedds[0, :], None, "" ],
-]
+
+examples = []
+for i in range(audio_embedds_normalized.shape[0]):
+    examples.append([ torch.rand([ 1, 80, 512 ]).to(device), audio_embedds_normalized[i, :].to(device), None, input_texts[i] ],)
 
 real_images, generated_images, captions = generate_samples(trainer, examples, device=device, match_image_size=False)
 
-print(generated_images[0].shape)
 
-generated_image = generated_images[0].detach().cpu().numpy()
-real_image =real_images[0].detach().cpu().numpy()
+for i, input_text in enumerate(input_texts):
 
-gen_melspec = np.array(spectral_normalize_torch(torch.from_numpy(generated_image)))
-target_melspec = np.array(spectral_normalize_torch(torch.from_numpy(real_image)))
+    generated_image = generated_images[i]
+    real_image =real_images[i]
 
-np.save(".decoder/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + input_text.replace(" ", "_").lower() + ".npy", gen_melspec)
+    gen_melspec = spectral_normalize_torch(generated_image).detach().cpu().numpy()
+    target_melspec = spectral_normalize_torch(real_image).detach().cpu().numpy()
 
-import matplotlib.pyplot as plt
+    np.save(".decoder/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + str(i) + "_" + input_text.replace(" ", "_").lower() + ".npy", gen_melspec)
 
-print("gen_melspec", gen_melspec.shape)
+    import matplotlib.pyplot as plt
 
-plt.title("gen melspec: " + captions[0])
-plt.imshow(gen_melspec[0, :, :])
-plt.savefig(".decoder/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + input_text.replace(" ", "_").lower() + ".png")
-plt.clf()
+    print("gen_melspec", gen_melspec.shape)
+
+    plt.title("gen melspec: " + input_text)
+    plt.imshow(gen_melspec[0, :, :])
+    plt.savefig(".decoder/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + input_text.replace(" ", "_").lower() + ".png")
+    plt.clf()
 
 

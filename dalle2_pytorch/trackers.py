@@ -272,7 +272,7 @@ def create_loader(loader_type: str, data_path: str, **kwargs) -> BaseLoader:
     except KeyError:
         raise ValueError(f'Unknown loader type: {loader_type}. Must be one of {list(loader_type_map.keys())}')
 
-    return LocalLoader(data_path, file_path='.decoder/best_checkpoint.pth') # CHANGE EVERYWHERE HARDCODE PROBLEM ATTENTION
+    return LocalLoader(data_path, file_path='.decoder_80x512_54epoch_l1//latest_checkpoint.pth') # CHANGE EVERYWHERE HARDCODE PROBLEM ATTENTION
     return loader_class(data_path, **kwargs)
 
 class BaseSaver:

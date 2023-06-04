@@ -65,6 +65,7 @@ config = TrainDecoderConfig.from_json_path(str(decoder_config_path))
 tracker = create_tracker(accelerator, config, decoder_config_path, dummy=False)
 
 decoder = config.decoder.create()
+decoder.to(device)
 
 trainer = DecoderTrainer(
     decoder=decoder,
@@ -106,52 +107,36 @@ dataloaders = create_dataloaders(
 )
 
 
-n_samples = 1
+n_samples = 10
 examples = get_example_data(dataloaders["train_sampling"], device, n_samples)
 
 print("examples", len(examples))
 
 real_images, generated_images, captions = generate_samples(trainer, examples, device=device, match_image_size=False)
 
-print(generated_images[0].shape)
+for i in range(len(generated_images)):
 
-resizer = Resize(size=(80, 512))
+    # gen_melspec = np.array(spectral_normalize_torch(resized_generated_image))
+    # target_melspec = np.array(spectral_normalize_torch(resized_real_image))
 
-generated_image = generated_images[0].detach().cpu().numpy()
+    gen_melspec = spectral_normalize_torch(generated_images[i]).detach().cpu().numpy()
+    target_melspec = spectral_normalize_torch(real_images[i]).detach().cpu().numpy()
 
-real_image =real_images[0].detach().cpu().numpy()
+    caption_lower = captions[i].replace(" ", "_").lower()
 
-np.save(".decoder/melspec_gen_little"+ ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", generated_image)
-np.save(".decoder/melspec_tgt_little"+ ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", real_image)
+    np.save(".decoder/melspec_gen_" + str(i) + "_" + caption_lower + ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", gen_melspec)
+    np.save(".decoder/melspec_tgt_" + str(i) + "_" + caption_lower + ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", target_melspec)
 
-resized_generated_image = resizer( generated_images[0] )
-resized_real_image = torch.from_numpy(real_image)
-resized_real_image_resized = resizer(torch.from_numpy(real_image))
+    import matplotlib.pyplot as plt
 
-try:
-    assert (resized_real_image == resized_real_image_resized).all(), "all  values of sesized image are ok"
-except Exception as e:
-    print("e resize error:", e)
-# gen_melspec = np.array(spectral_normalize_torch(resized_generated_image))
-# target_melspec = np.array(spectral_normalize_torch(resized_real_image))
 
-gen_melspec = np.array(spectral_normalize_torch(resized_generated_image))
-target_melspec = np.array(spectral_normalize_torch(resized_real_image))
+    plt.title("gen melspec: " + captions[i])
+    plt.imshow(gen_melspec[0, :, :])
+    plt.savefig(".decoder/melspec_gen" + str(i) + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
+    plt.clf()
 
-np.save(".decoder/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", gen_melspec)
-np.save(".decoder/melspec_tgt"+ ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", target_melspec)
-
-import matplotlib.pyplot as plt
-
-print("gen_melspec", gen_melspec.shape)
-
-plt.title("gen melspec: " + captions[0])
-plt.imshow(gen_melspec[0, :, :])
-plt.savefig("melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
-plt.clf()
-
-plt.title("tgt melspec: " + captions[0])
-plt.imshow(target_melspec[0, :, :])
-plt.savefig("melspec_tgt" + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
-plt.clf()
+    plt.title("tgt melspec: " + captions[i])
+    plt.imshow(target_melspec[0, :, :])
+    plt.savefig(".decoder/melspec_tgt" + str(i) + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
+    plt.clf()
 
