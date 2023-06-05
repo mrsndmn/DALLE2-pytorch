@@ -24,6 +24,10 @@ sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch')
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan')
 
+from diffusers import AudioLDMPipeline
+
+audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2" )
+
 from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig
 
 from transformers import ClapTextModelWithProjection, AutoTokenizer
@@ -128,6 +132,7 @@ for i in range(audio_embedds_normalized.shape[0]):
 real_images, generated_images, captions = generate_samples(trainer, examples, device=device, match_image_size=False)
 
 
+
 for i, input_text in enumerate(input_texts):
 
     generated_image = generated_images[i]
@@ -136,7 +141,9 @@ for i, input_text in enumerate(input_texts):
     gen_melspec = spectral_normalize_torch(generated_image).detach().cpu().numpy()
     target_melspec = spectral_normalize_torch(real_image).detach().cpu().numpy()
 
-    np.save(".decoder/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + str(i) + "_" + input_text.replace(" ", "_").lower() + ".npy", gen_melspec)
+    sample_file_suffix = input_text.replace(" ", "_").lower()
+
+    np.save(".decoder/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".npy", gen_melspec)
 
     import matplotlib.pyplot as plt
 
@@ -144,7 +151,14 @@ for i, input_text in enumerate(input_texts):
 
     plt.title("gen melspec: " + input_text)
     plt.imshow(gen_melspec[0, :, :])
-    plt.savefig(".decoder/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + input_text.replace(" ", "_").lower() + ".png")
+    plt.savefig(".decoder/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".png")
     plt.clf()
+
+    generated_image_for_vocoder = generated_image.permute(0, 2, 1)
+    assert generated_image_for_vocoder.shape == (1, 512, 64), 'vocoder shape is ok'
+
+    sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder)
+
+    torchaudio.save( ".decoder/" + sample_file_suffix + ".wav", sample_waveform, 22050 )
 
 
