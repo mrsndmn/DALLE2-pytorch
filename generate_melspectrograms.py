@@ -113,14 +113,14 @@ def process_dataset_idx(i):
 
         clap_outputs = clap(**processed_inputs)
 
-        expected_sample_rate = 22050 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 22050 sampling rate
+        expected_sample_rate = 16000 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 16000 sampling rate
         waveform22 = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
 
         mel = mel_spectrogram(waveform22, nfft, num_mels, sample_rate, hop_size, win_size, fmin, fmax, center=False)
         mel = torch.exp(mel)
 
         sink.write({
-            "__key__": "sample{:04d}".format(i),
+            "__key__": "sample{:06d}".format(i),
             "melspectrogram.npy": np.array(mel),
             "audio_emb.npy": clap_outputs.audio_embeds.detach().cpu().numpy(),
             "text_emb.npy": clap_outputs.text_embeds.detach().cpu().numpy(),

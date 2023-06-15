@@ -31,9 +31,9 @@ processor =  AutoProcessor.from_pretrained(name)
 
 dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
-audio_dir = "../audiocaps_train/"
-embeddings_dir = '../audiocaps_train_embeddings_1k/'
-count_spectrograms = 1000
+audio_path = "../data/audiocaps_train/"
+embeddings_dir = '../data/audiocaps_prior_train_embeddings/'
+count_spectrograms = 0
 
 if count_spectrograms > 0:
     dataset = dataset.head( count_spectrograms )
@@ -50,9 +50,6 @@ if not os.path.isdir(embeddings_dir + 'text'):
 
 # prepare spectrogram
 
-# to prepare spectrogram dataset with cli
-# ~/anaconda3_new/envs/riffusion/bin/python3.9 -m riffusion.cli audio-to-image --audio ../audiocaps_train/000AjsqXq54.wav --image ./000AjsqXq54.jpg
-
 with torch.no_grad():
     full_metadata_file_path = embeddings_dir + "metadata.jsonl"
     with open(full_metadata_file_path, 'w') as f:
@@ -61,7 +58,7 @@ with torch.no_grad():
             file_name = row['youtube_id'] + '.wav'
             audio_embedding_file_name = 'audio/' + row['youtube_id'] + '_audio.npy'
             text_embedding_file_name = 'text/' + row['youtube_id'] + '_text.npy'
-            full_path_audio = "../audiocaps_train/" + file_name
+            full_path_audio = audio_path + file_name
             audio_full_path_embedding = embeddings_dir + audio_embedding_file_name
             text_full_path_embedding = embeddings_dir + text_embedding_file_name
 
