@@ -145,5 +145,5 @@ sink.close()
 
 #     result = list(tqdm(pool.imap(process_dataset_idx, range(len(dataset))), total=len(dataset), desc='prepare spectrograms'))
 
-print("audio embedding files are prepared:", audio_embeddings_dir)
+print("webdataset_dir files are prepared:", webdataset_dir)
 

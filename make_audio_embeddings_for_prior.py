@@ -13,6 +13,12 @@ import numpy as np
 import torchaudio
 import torch
 
+import sys
+
+sys.path.insert(0, "/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch")
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
+
+
 from transformers import ClapModel, AutoProcessor, ClapProcessor
 
 # riffusion repo must be script working directory
@@ -48,10 +54,10 @@ if not os.path.isdir(embeddings_dir + 'audio'):
 if not os.path.isdir(embeddings_dir + 'text'):
     os.mkdir(embeddings_dir + 'text')
 
-# prepare spectrogram
 
 with torch.no_grad():
     full_metadata_file_path = embeddings_dir + "metadata.jsonl"
+
     with open(full_metadata_file_path, 'w') as f:
         for _, row in tqdm(dataset.iterrows(), total=len(dataset), desc='prepare metadata'):
 
@@ -91,7 +97,6 @@ with torch.no_grad():
             np.save(audio_full_path_embedding, clap_outputs.audio_embeds.detach().cpu().numpy())
             np.save(text_full_path_embedding, clap_outputs.text_embeds.detach().cpu().numpy())
 
-            # todo maybe also save clap_outputs.text_model_output.last_hidden_state ?
 
             jsonline = {
                 "audio_embedding_file_name": audio_embedding_file_name,
@@ -101,20 +106,6 @@ with torch.no_grad():
 
             f.write( json.dumps(jsonline) + "\n" )
 
-    print("metadata file is prepared", full_metadata_file_path)
+    # todo maybe also save clap_outputs.text_model_output.last_hidden_state ?
 
 
-
-
-# # pooler_output = text_outputs.pooler_output
-# # last_hidden_state = text_outputs.last_hidden_state
-# # last_hidden_state = last_hidden_state[1 != processed_text["attention_mask"]] = 0
-
-# #         return EmbeddedText(l2norm(text_embed), text_encodings)
-
-
-# # todo убрать хардкод sample rate
-# processed_audio = processor(, return_tensors="pt", padding=True)
-# audio_outputs = clap.audio_model(**processed_audio)
-
-#         return EmbeddedImage(l2norm(image_embed), image_encodings)
