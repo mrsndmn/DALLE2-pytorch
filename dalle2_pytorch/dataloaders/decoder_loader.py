@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 import numpy as np
 import fsspec
 import shutil
+import random
+
 
 def get_shard(filename):
     """
@@ -131,7 +133,10 @@ def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
             print("too little item:", sample['audio_melspec'].shape)
             continue
 
-        sample['audio_melspec'] = sample['audio_melspec'][:, : , :audio_max_len]
+        audio_max_len_start = random.randint(0, sample['audio_melspec'].shape[-1] - audio_max_len)
+        audio_max_len_end = audio_max_len_start + audio_max_len
+
+        sample['audio_melspec'] = sample['audio_melspec'][:, : , audio_max_len_start:audio_max_len_end]
 
         try:
             for key in required_keys:

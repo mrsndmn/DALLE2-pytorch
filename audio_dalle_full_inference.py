@@ -26,8 +26,6 @@ sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan')
 
 from diffusers import AudioLDMPipeline
 
-audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2" )
-
 from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig
 
 from transformers import ClapTextModelWithProjection, AutoTokenizer
@@ -64,6 +62,9 @@ name = "laion/clap-htsat-unfused"
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
+audioLDMpipe.to(device)
+
 # do_clap_evaluation = False
 do_clap_evaluation = True
 
@@ -83,7 +84,7 @@ clap_text_outputs = clap(**processed_inputs_text)
 
 print("clap_text_outputs.text_embeds.shape", clap_text_outputs.text_embeds.shape) # [ 1, 512 ]
 
-prior_train_state = torch.load('.prior/best_checkpoint.pth', map_location=device)
+prior_train_state = torch.load('.prior/latest_checkpoint.pth', map_location=device)
 
 config = TrainDiffusionPriorConfig.from_json_path('configs/train_clap_prior_config.json')
 
@@ -94,8 +95,6 @@ diffusionPrior.to(device)
 clap_text_embeddings_normalized = clap_text_outputs.text_embeds / clap_text_outputs.text_embeds.norm(p=2, dim=-1, keepdim=True)
 
 audio_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shape, text_cond = { "text_embed": clap_text_embeddings_normalized.to(device) } )
-
-# todo make riffusion generation and vocoder
 
 
 decoder_config_path = 'configs/train_decoder_config.audio_inference.json'
@@ -127,7 +126,7 @@ audio_embedds_normalized = audio_embedds / audio_embedds.norm(p=2, dim=-1, keepd
 
 examples = []
 for i in range(audio_embedds_normalized.shape[0]):
-    examples.append([ torch.rand([ 1, 80, 512 ]).to(device), audio_embedds_normalized[i, :].to(device), None, input_texts[i] ],)
+    examples.append([ torch.rand([ 1, 64, 512 ]).to(device), audio_embedds_normalized[i, :].to(device), None, input_texts[i] ],)
 
 real_images, generated_images, captions = generate_samples(trainer, examples, device=device, match_image_size=False)
 
@@ -138,12 +137,15 @@ for i, input_text in enumerate(input_texts):
     generated_image = generated_images[i]
     real_image =real_images[i]
 
-    gen_melspec = spectral_normalize_torch(generated_image).detach().cpu().numpy()
-    target_melspec = spectral_normalize_torch(real_image).detach().cpu().numpy()
+    gen_melspec_t = spectral_normalize_torch(generated_image).detach()
+    gen_melspec = gen_melspec_t.cpu().numpy()
+
+    target_melspec_t = spectral_normalize_torch(real_image).detach()
+    target_melspec = target_melspec_t.cpu().numpy()
 
     sample_file_suffix = input_text.replace(" ", "_").lower()
 
-    np.save(".decoder/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".npy", gen_melspec)
+    np.save(".decoder/full_inference/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".npy", gen_melspec)
 
     import matplotlib.pyplot as plt
 
@@ -151,14 +153,14 @@ for i, input_text in enumerate(input_texts):
 
     plt.title("gen melspec: " + input_text)
     plt.imshow(gen_melspec[0, :, :])
-    plt.savefig(".decoder/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".png")
+    plt.savefig(".decoder/full_inference/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".png")
     plt.clf()
 
-    generated_image_for_vocoder = generated_image.permute(0, 2, 1)
+    generated_image_for_vocoder = gen_melspec_t.permute(0, 2, 1)
     assert generated_image_for_vocoder.shape == (1, 512, 64), 'vocoder shape is ok'
 
-    sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder)
+    sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
 
-    torchaudio.save( ".decoder/" + sample_file_suffix + ".wav", sample_waveform, 22050 )
+    torchaudio.save( ".decoder/full_inference/" + sample_file_suffix + ".wav", sample_waveform, 22050 )
 
-
+print("done")

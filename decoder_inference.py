@@ -24,6 +24,7 @@ sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch')
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan')
 
+from diffusers import AudioLDMPipeline
 from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig
 
 from transformers import ClapTextModelWithProjection, AutoTokenizer
@@ -51,6 +52,9 @@ input_text = "Person is whistling"
 name = "laion/clap-htsat-unfused"
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
+audioLDMpipe.to(device)
 
 decoder_config_path = 'configs/train_decoder_config.audio_inference.json'
 
@@ -119,24 +123,45 @@ for i in range(len(generated_images)):
     # gen_melspec = np.array(spectral_normalize_torch(resized_generated_image))
     # target_melspec = np.array(spectral_normalize_torch(resized_real_image))
 
-    gen_melspec = spectral_normalize_torch(generated_images[i]).detach().cpu().numpy()
-    target_melspec = spectral_normalize_torch(real_images[i]).detach().cpu().numpy()
+    gen_melspec_t = spectral_normalize_torch(generated_images[i]).detach()
+    gen_melspec = gen_melspec_t.cpu().numpy()
+
+    target_melspec_t = spectral_normalize_torch(real_images[i]).detach()
+    target_melspec = target_melspec_t.cpu().numpy()
 
     caption_lower = captions[i].replace(" ", "_").lower()
 
-    np.save(".decoder/melspec_gen_" + str(i) + "_" + caption_lower + ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", gen_melspec)
-    np.save(".decoder/melspec_tgt_" + str(i) + "_" + caption_lower + ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", target_melspec)
+    np.save(".decoder/inference/melspec_gen_" + str(i) + "_" + caption_lower + ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", gen_melspec)
+    np.save(".decoder/inference/melspec_tgt_" + str(i) + "_" + caption_lower + ( "_prior" if do_clap_evaluation else "_pregen" ) +".npy", target_melspec)
 
     import matplotlib.pyplot as plt
 
 
     plt.title("gen melspec: " + captions[i])
     plt.imshow(gen_melspec[0, :, :])
-    plt.savefig(".decoder/melspec_gen" + str(i) + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
+    plt.savefig(".decoder/inference/melspec_gen" + str(i) + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
     plt.clf()
 
     plt.title("tgt melspec: " + captions[i])
     plt.imshow(target_melspec[0, :, :])
-    plt.savefig(".decoder/melspec_tgt" + str(i) + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
+    plt.savefig(".decoder/inference/melspec_tgt" + str(i) + ( "_prior" if do_clap_evaluation else "_pregen" ) + ".png")
     plt.clf()
+
+    generated_image_for_vocoder = gen_melspec_t.permute(0, 2, 1)
+    assert generated_image_for_vocoder.shape == (1, 512, 64), 'vocoder shape is ok'
+
+    sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
+
+    torchaudio.save( ".decoder/inference/" + str(i) + "_generated.wav", sample_waveform, 22050 )
+
+    target_image_for_vocoder = target_melspec_t.permute(0, 2, 1)
+    assert target_image_for_vocoder.shape == (1, 512, 64), 'vocoder shape is ok'
+
+    target_waveform = audioLDMpipe.vocoder(target_image_for_vocoder).detach().cpu()
+
+    torchaudio.save( ".decoder/inference/" + str(i) + "_target.wav", target_waveform, 22050 )
+
+
+print("done")
+
 
