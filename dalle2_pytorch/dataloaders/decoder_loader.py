@@ -275,6 +275,7 @@ def create_audio_embedding_dataloader(
     :param resample_shards: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
     :param handler: A webdataset handler.
     """
+    print("tar_url", tar_url)
     ds = AudioEmbeddingDataset(
         tar_url,
         audio_embeddings_url=audio_embeddings_url,

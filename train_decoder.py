@@ -66,11 +66,12 @@ def create_dataloaders(
     train_split, test_split, val_split = torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(seed))
 
     # The shard number in the webdataset file names has a fixed width. We zero pad the shard numbers so they correspond to a filename.
-    train_urls  = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]
-    print("train_urls", train_urls)
-    # todo rm
-    test_urls   = [ *train_urls ] # [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
-    val_urls    = [ *train_urls ] # [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
+    train_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]
+    val_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
+    test_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
+    print("train_split", len(train_urls))
+    print("val_split", len(val_urls))
+    print("test_split", len(test_urls))
 
     create_dataloader = lambda tar_urls, shuffle=False, resample=False, for_sampling=False: create_audio_embedding_dataloader(
         tar_url=tar_urls,
@@ -92,8 +93,8 @@ def create_dataloaders(
     train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
     train_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)
 
-    val_dataloader = create_dataloader(val_urls, shuffle=False, for_sampling=True)
-    test_dataloader = create_dataloader(test_urls, shuffle=shuffle_train, resample=resample_train)
+    val_dataloader = create_dataloader(val_urls, shuffle=False)
+    test_dataloader = create_dataloader(test_urls, shuffle=False)
     test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)
     # val_dataloader = create_dataloader(val_urls, shuffle=False)
     # test_dataloader = create_dataloader(test_urls, shuffle=False)
@@ -435,7 +436,7 @@ def train(
                     loss = trainer.forward(audio_melspec, **forward_params, unet_number=unet, _device=inference_device)
                     trainer.update(unet_number=unet)
                     unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
-                
+
                 samples_per_sec = (sample - last_sample) / timer.elapsed()
                 timer.reset()
                 last_sample = sample
@@ -463,19 +464,21 @@ def train(
                     if is_master:
                         tracker.log(log_data, step=step())
 
-                if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope
-                    # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
-                    print("Saving snapshot")
-                    last_snapshot = sample
-                    # We need to know where the model should be saved
-                    save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)
-                    if exists(n_sample_images) and n_sample_images > 0:
-                        trainer.eval()
-                        train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
-                        tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
-                
+                # todo не уверен, но возможно, из-за этого места мог залипать мастер
+                # if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope
+                #     # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
+                #     print("Saving snapshot")
+                #     last_snapshot = sample
+                #     # We need to know where the model should be saved
+                #     save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)
+                #     if exists(n_sample_images) and n_sample_images > 0:
+                #         trainer.eval()
+                #         train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
+                #         tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
+
                 if epoch_samples is not None and sample >= epoch_samples:
                     break
+
             next_task = 'val'
             sample = 0
 
@@ -487,19 +490,16 @@ def train(
             val_sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)
             average_val_loss_tensor = torch.zeros(1, trainer.num_unets, dtype=torch.float, device=inference_device)
             timer = Timer()
-            accelerator.wait_for_everyone()
+
+            print("dataloaders['val']", dataloaders['val'])
+
             i = 0
             for i, batch_item in enumerate(dataloaders['val']):  # Use the accelerate prepared loader
-
-                print("validation batch i", i)
-                if i >= 100:
-                    break
 
                 audio_melspec = batch_item['audio_melspec']
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
                 text_emb = batch_item.get('text_emb')
-
 
                 val_sample_length_tensor[0] = len(audio_melspec)
                 all_samples = accelerator.gather(val_sample_length_tensor)
@@ -518,7 +518,7 @@ def train(
                     if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
                         # No need to evaluate an unchanging unet
                         continue
-                        
+
                     forward_params = {}
                     if has_img_embedding:
                         forward_params['image_embed'] = audio_emb.float()
@@ -554,8 +554,11 @@ def train(
 
                 if validation_samples is not None and val_sample >= validation_samples:
                     break
-            print(f"Rank {accelerator.state.process_index} finished validation after {i} steps")
+
+            print(f"Rank {accelerator.process_index} finished validation after {i} steps")
+            print("accelerator.wait_for_everyone() after validation start", accelerator.process_index)
             accelerator.wait_for_everyone()
+            print("accelerator.wait_for_everyone() after validation done", accelerator.process_index)
             average_val_loss_tensor /= i+1
             # Gather all the average loss tensors
             all_average_val_losses = accelerator.gather(average_val_loss_tensor)
@@ -604,7 +607,9 @@ def create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_
         "NumProcesses": accelerator.num_processes,
         "MixedPrecision": accelerator.mixed_precision
     }
+    print("accelerator.wait_for_everyone in create_tracker start", accelerator.process_index)
     accelerator.wait_for_everyone()  # If nodes arrive at this point at different times they might try to autoresume the current run which makes no sense and will cause errors
+    print("accelerator.wait_for_everyone in create_tracker stop", accelerator.process_index)
     tracker: Tracker = tracker_config.create(config, accelerator_config, dummy_mode=dummy)
     tracker.save_config(config_path, config_name='decoder_config.json')
     tracker.add_save_metadata(state_dict_key='config', metadata=config.dict())
@@ -621,7 +626,7 @@ def initialize_training(config: TrainDecoderConfig, config_path):
 
     if accelerator.num_processes > 1:
         # We are using distributed training and want to immediately ensure all can connect
-        accelerator.print("Waiting for all processes to connect...")
+        accelerator.print("Waiting for all processes to connect...", accelerator.num_processes)
         accelerator.wait_for_everyone()
         accelerator.print("All processes online and connected")
 
