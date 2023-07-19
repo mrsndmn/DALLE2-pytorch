@@ -606,10 +606,10 @@ class DecoderTrainer(nn.Module):
 
             warmup_scheduler = self.warmup_schedulers[ind]
 
-            if exists(optimizer):
+            if exists(optimizer) and loaded_obj[optimizer_key] is not None:
                 optimizer.load_state_dict(loaded_obj[optimizer_key])
 
-            if exists(scheduler):
+            if exists(scheduler) and loaded_obj[scheduler_key] is not None:
                 scheduler.load_state_dict(loaded_obj[scheduler_key])
 
             if exists(warmup_scheduler):

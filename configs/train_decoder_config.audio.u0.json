@@ -1,0 +1,113 @@
+{
+    "decoder": {
+        "unets": [
+            {
+                "dim": 128,
+                "image_embed_dim": 512,
+                "cond_dim": 64,
+                "channels": 1,
+                "dim_mults": [1, 2, 3, 4],
+                "attn_dim_head": 16,
+                "attn_heads": 4,
+                "memory_efficient":true,
+                "self_attn": [false, true, true, true]
+            },
+            {
+                "dim": 64,
+                "image_embed_dim": 512,
+                "cond_dim": 32,
+                "channels": 1,
+                "dim_mults": [1, 2, 3, 4],
+                "attn_dim_head": 16,
+                "attn_heads": 1,
+                "memory_efficient":true,
+                "self_attn": [false, false, true, true]
+            },
+            {
+                "dim": 64,
+                "image_embed_dim": 512,
+                "cond_dim": 32,
+                "channels": 1,
+                "dim_mults": [1, 2, 3, 4],
+                "attn_dim_head": 16,
+                "attn_heads": 1,
+                "memory_efficient":true,
+                "self_attn": [false, false, true, true]
+            }
+        ],
+        "blur_prob": 0.0,
+        "blur_sigma": 0.0,
+        "blur_kernel_size": 3,
+        "image_sizes": [ [32, 128], [64, 256], [64, 512] ],
+        "channels": 1,
+        "timesteps": 1000,
+        "loss_type": "l2",
+        "beta_schedule": [ "cosine", "cosine", "linear" ],
+        "learned_variance": false
+    },
+    "data": {
+        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset/webdataset-{}.tar",
+        "num_workers": 4,
+        "batch_size": 512,
+        "start_shard": 0,
+        "end_shard": 47,
+        "shard_width": 3,
+        "index_width": 4,
+        "splits": {
+            "train": 0.92,
+            "val": 0.04,
+            "test": 0.04
+        },
+        "shuffle_train": true,
+        "resample_train": false,
+        "preprocessing": {
+            "ToTensor": true
+        }
+    },
+    "train": {
+        "epochs": 1000,
+        "lr": 1e-4,
+        "wd": 0.01,
+        "max_grad_norm": 0.5,
+        "save_every_n_samples": 1000000,
+        "find_unused_parameters": true,
+        "static_graph": false,
+        "n_sample_images": 2,
+        "device": "cuda:0",
+        "epoch_samples": null,
+        "validation_samples": null,
+        "use_ema": true,
+        "ema_beta": 0.99,
+        "amp": false,
+        "unet_training_mask": [ true, false, false ]
+    },
+    "evaluate": {
+        "n_evaluation_samples": 2,
+        "device": "cuda:0"
+    },
+    "tracker": {
+        "overwrite_data_path": true,
+        "data_path": ".decoder_u0_18.07",
+
+        "log": {
+            "log_type": "wandb",
+            "wandb_entity": "hsemrsndmn",
+            "wandb_project": "dalle2_decoder",
+            "verbose": true
+        },
+
+        "load": {
+            "load_from": null,
+            "file_path": "HARDCODE PROBLEM ATTENTION!"
+        },
+
+        "save": [
+            {
+                "save_to": "local",
+                "save_type": "checkpoint",
+                "save_latest_to": ".decoder_u0_18.07/latest_checkpoint.pth",
+                "save_best_to": ".decoder_u0_18.07/best_checkpoint.pth"
+            }
+        ]
+    }
+}

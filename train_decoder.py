@@ -294,7 +294,7 @@ def recall_trainer(tracker: Tracker, trainer: DecoderTrainer):
     """
     trainer.accelerator.print(print_ribbon(f"Loading model from {type(tracker.loader).__name__}"))
     state_dict = tracker.recall()
-    trainer.load_state_dict(state_dict, only_model=False, strict=True)
+    trainer.load_state_dict(state_dict, only_model=False, strict=False)
     return state_dict.get("epoch", 0), state_dict.get("validation_losses", []), state_dict.get("next_task", "train"), state_dict.get("sample", 0), state_dict.get("samples_seen", 0)
 
 def train(
