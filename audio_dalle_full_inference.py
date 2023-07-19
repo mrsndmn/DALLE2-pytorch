@@ -96,8 +96,12 @@ clap_text_embeddings_normalized = clap_text_outputs.text_embeds / clap_text_outp
 
 audio_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shape, text_cond = { "text_embed": clap_text_embeddings_normalized.to(device) } )
 
+decoder_base_path = '.decoder_u2_19.07'
 
-decoder_config_path = 'configs/train_decoder_config.audio_inference.json'
+if not os.path.exists(decoder_base_path):
+    os.mkdir(decoder_base_path + '/full_inference')
+
+decoder_config_path = decoder_base_path + '/decoder_config.json'
 
 from train_decoder import create_tracker, recall_trainer, generate_samples
 from dalle2_pytorch.trainer import DecoderTrainer
@@ -145,7 +149,7 @@ for i, input_text in enumerate(input_texts):
 
     sample_file_suffix = input_text.replace(" ", "_").lower()
 
-    np.save(".decoder/full_inference/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".npy", gen_melspec)
+    np.save(decoder_base_path + "/full_inference/melspec_gen"+ ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".npy", gen_melspec)
 
     import matplotlib.pyplot as plt
 
@@ -153,7 +157,7 @@ for i, input_text in enumerate(input_texts):
 
     plt.title("gen melspec: " + input_text)
     plt.imshow(gen_melspec[0, :, :])
-    plt.savefig(".decoder/full_inference/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".png")
+    plt.savefig(decoder_base_path + "/full_inference/melspec_gen" + ( "_prior" if do_clap_evaluation else "_pregen" ) + "_" + sample_file_suffix + ".png")
     plt.clf()
 
     generated_image_for_vocoder = gen_melspec_t.permute(0, 2, 1)
@@ -161,6 +165,6 @@ for i, input_text in enumerate(input_texts):
 
     sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
 
-    torchaudio.save( ".decoder/full_inference/" + sample_file_suffix + ".wav", sample_waveform, 22050 )
+    torchaudio.save( decoder_base_path + "/full_inference/" + sample_file_suffix + ".wav", sample_waveform, 22050 )
 
 print("done")

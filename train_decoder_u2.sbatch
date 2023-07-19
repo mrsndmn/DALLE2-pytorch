@@ -1,5 +1,5 @@
 #!/bin/env bash
-#SBATCH --job-name="dec u1"
+#SBATCH --job-name="dec u2"
 #SBATCH --ntasks=1              # Количество MPI процессов
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
 #SBATCH --cpus-per-task=8       # Количество ядер CPU, выделенных для одного процесса
@@ -18,10 +18,6 @@ set -eo pipefail
 set -o xtrace
 
 #Executable
-
-export NCCL_DEBUG=INFO
-export NCCL_DEBUG_SUBSYS=ALL
-export TORCH_DISTRIBUTED_DEBUG=INFO
 
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 
