@@ -92,7 +92,7 @@
         "log": {
             "log_type": "wandb",
             "wandb_entity": "hsemrsndmn",
-            "wandb_project": "dalle2_decoder",
+            "wandb_project": "dalle2_decoder_u0",
             "verbose": true
         },
 

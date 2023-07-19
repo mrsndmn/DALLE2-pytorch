@@ -87,26 +87,26 @@
     },
     "tracker": {
         "overwrite_data_path": true,
-        "data_path": ".decoder_u1_19.07",
+        "data_path": ".decoder_u2_19.07",
 
         "log": {
             "log_type": "wandb",
             "wandb_entity": "hsemrsndmn",
-            "wandb_project": "dalle2_decoder",
+            "wandb_project": "dalle2_decoder_u2",
             "verbose": true
         },
 
         "load": {
             "load_from": "local",
-            "file_path": "HARDCODE PROBLEM ATTENTION!"
+            "file_path": ".decoder_u1_19.07/latest_checkpoint.pth"
         },
 
         "save": [
             {
                 "save_to": "local",
                 "save_type": "checkpoint",
-                "save_latest_to": ".decoder_u1_19.07/latest_checkpoint.pth",
-                "save_best_to": ".decoder_u1_19.07/best_checkpoint.pth"
+                "save_latest_to": ".decoder_u2_19.07/latest_checkpoint.pth",
+                "save_best_to": ".decoder_u2_19.07/best_checkpoint.pth"
             }
         ]
     }

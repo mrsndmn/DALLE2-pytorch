@@ -92,13 +92,13 @@
         "log": {
             "log_type": "wandb",
             "wandb_entity": "hsemrsndmn",
-            "wandb_project": "dalle2_decoder",
+            "wandb_project": "dalle2_decoder_u1",
             "verbose": true
         },
 
         "load": {
             "load_from": "local",
-            "file_path": "HARDCODE PROBLEM ATTENTION!"
+            "file_path": ".decoder_u0_18.07/latest_checkpoint.pth"
         },
 
         "save": [
