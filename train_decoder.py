@@ -276,6 +276,8 @@ def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=Non
         metrics_tensor = torch.zeros(1, len(metrics), device=device, dtype=torch.float)
         for i, metric_name in enumerate(metrics_order):
             metrics_tensor[0, i] = metrics[metric_name]
+        print("gather eval metrics", trainer.accelerator.process_index)
+
         metrics_tensor = trainer.accelerator.gather(metrics_tensor)
         metrics_tensor = metrics_tensor.mean(dim=0)
         for i, metric_name in enumerate(metrics_order):
@@ -388,12 +390,14 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for i, batch_item in enumerate(dataloaders["train"]):
+            for i, batch_item in enumerate(trainer.train_loader):
 
                 audio_melspec = batch_item['audio_melspec']
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
                 text_emb = batch_item.get('text_emb')
+
+                print(f"train: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
 
                 # We want to count the total number of samples across all processes
                 sample_length_tensor[0] = len(audio_melspec)
@@ -462,6 +466,7 @@ def train(
                     }
 
                     if is_master:
+                        print("master tracker.log", log_data)
                         tracker.log(log_data, step=step())
 
                 # todo не уверен, но возможно, из-за этого места мог залипать мастер
@@ -475,6 +480,7 @@ def train(
                 #         trainer.eval()
                 #         train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
                 #         tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
+                # accelerator.wait_for_everyone()
 
                 if epoch_samples is not None and sample >= epoch_samples:
                     break
@@ -491,15 +497,17 @@ def train(
             average_val_loss_tensor = torch.zeros(1, trainer.num_unets, dtype=torch.float, device=inference_device)
             timer = Timer()
 
-            print("dataloaders['val']", dataloaders['val'])
 
             i = 0
-            for i, batch_item in enumerate(dataloaders['val']):  # Use the accelerate prepared loader
+            for i, batch_item in enumerate(trainer.val_loader):
+
 
                 audio_melspec = batch_item['audio_melspec']
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
                 text_emb = batch_item.get('text_emb')
+
+                print(f"validation: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
 
                 val_sample_length_tensor[0] = len(audio_melspec)
                 all_samples = accelerator.gather(val_sample_length_tensor)
@@ -571,7 +579,7 @@ def train(
         if next_task == 'eval':
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
+                evaluation = evaluate_trainer(trainer, trainer.val_loader, inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
                 if is_master:
                     tracker.log(evaluation, step=step())
             next_task = 'sample'
@@ -598,6 +606,8 @@ def train(
                     validation_losses.append(average_loss)
                 save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen, is_best=is_best)
             next_task = 'train'
+
+            accelerator.wait_for_everyone()
 
 def create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_path: str, dummy: bool = False) -> Tracker:
     tracker_config = config.tracker

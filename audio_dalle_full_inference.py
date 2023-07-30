@@ -99,7 +99,12 @@ audio_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shap
 decoder_base_path = '.decoder_u2_19.07'
 
 if not os.path.exists(decoder_base_path):
-    os.mkdir(decoder_base_path + '/full_inference')
+    os.mkdir(decoder_base_path)
+
+full_inference_path = decoder_base_path + '/full_inference'
+
+if not os.path.exists(full_inference_path):
+    os.mkdir(full_inference_path)
 
 decoder_config_path = decoder_base_path + '/decoder_config.json'
 
@@ -111,7 +116,7 @@ from torchvision.transforms import Resize
 
 accelerator = Accelerator()
 config = TrainDecoderConfig.from_json_path(str(decoder_config_path))
-tracker = create_tracker(accelerator, config, decoder_config_path, dummy=False)
+tracker = create_tracker(accelerator, config, full_inference_path, dummy=False)
 
 decoder = config.decoder.create()
 

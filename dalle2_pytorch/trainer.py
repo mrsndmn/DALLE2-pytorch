@@ -451,7 +451,8 @@ class DecoderTrainer(nn.Module):
         assert isinstance(decoder, Decoder)
         ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
 
-        self.accelerator = default(accelerator, Accelerator)
+        assert accelerator is not None, "accelerator is required for decoder trainer"
+        self.accelerator = accelerator
 
         self.num_unets = len(decoder.unets)
 
@@ -675,14 +676,14 @@ class DecoderTrainer(nn.Module):
         base_decoder.eval()
 
         if kwargs.pop('use_non_ema', False) or not self.use_ema:
-            out = base_decoder.sample(*args, **kwargs, distributed = distributed)
+            out = base_decoder.sample(*args, **kwargs, one_unet_in_gpu_at_time = not distributed)
             base_decoder.train(was_training)
             return out
 
         trainable_unets = self.accelerator.unwrap_model(self.decoder).unets
         base_decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling
 
-        output = base_decoder.sample(*args, **kwargs, distributed = distributed)
+        output = base_decoder.sample(*args, **kwargs, one_unet_in_gpu_at_time = not distributed)
 
         base_decoder.unets = trainable_unets             # restore original training unets
 
