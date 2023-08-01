@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
 #SBATCH --cpus-per-task=8       # Количество ядер CPU, выделенных для одного процесса
 #SBATCH --gpus-per-node=2       # Количество GPU на один узел
-#SBATCH -C type_b
+#SBATCH -C type_e
 #SBATCH --time-min=1400
 
 module purge
@@ -18,8 +18,8 @@ set -eo pipefail
 set -o xtrace
 
 #Executable
-export NCCL_DEBUG_SUBSYS=COLL
-export NCCL_DEBUG=INFO
+# export NCCL_DEBUG_SUBSYS=COLL
+# export NCCL_DEBUG=INFO
 
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 

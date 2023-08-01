@@ -300,7 +300,7 @@ def create_audio_embedding_dataloader(
 
         # audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 1, 3)
         audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 3, 1)
-        print("audio_melspec_stacked", audio_melspec_stacked.shape)
+        # print("audio_melspec_stacked", audio_melspec_stacked.shape)
 
         return {
             "audio_emb": torch.stack([ torch.tensor(x['audio_emb']) for x in batch ])[:, 0, :],

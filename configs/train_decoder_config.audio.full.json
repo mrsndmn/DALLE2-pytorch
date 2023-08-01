@@ -54,9 +54,9 @@
         "shard_width": 3,
         "index_width": 4,
         "splits": {
-            "train": 0.92,
-            "val": 0.04,
-            "test": 0.04
+            "train": 0.90,
+            "val": 0.05,
+            "test": 0.05
         },
         "shuffle_train": true,
         "resample_train": false,
@@ -79,7 +79,7 @@
         "use_ema": true,
         "ema_beta": 0.99,
         "amp": false,
-        "unet_training_mask": [ true, false, false ]
+        "unet_training_mask": [ true, true, true ]
     },
     "evaluate": {
         "n_evaluation_samples": 2,
@@ -87,12 +87,12 @@
     },
     "tracker": {
         "overwrite_data_path": true,
-        "data_path": ".decoder_u0_18.07",
+        "data_path": ".decoder_full",
 
         "log": {
             "log_type": "wandb",
             "wandb_entity": "hsemrsndmn",
-            "wandb_project": "dalle2_decoder_u0",
+            "wandb_project": "dalle2_decoder_full",
             "verbose": true
         },
 
@@ -104,8 +104,8 @@
             {
                 "save_to": "local",
                 "save_type": "checkpoint",
-                "save_latest_to": ".decoder_u0_18.07/latest_checkpoint.pth",
-                "save_best_to": ".decoder_u0_18.07/best_checkpoint.pth"
+                "save_latest_to": ".decoder_full/latest_checkpoint.pth",
+                "save_best_to": ".decoder_full/best_checkpoint.pth"
             }
         ]
     }

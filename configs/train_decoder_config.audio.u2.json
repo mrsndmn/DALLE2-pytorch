@@ -48,7 +48,7 @@
     "data": {
         "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset/webdataset-{}.tar",
         "num_workers": 4,
-        "batch_size": 32,
+        "batch_size": 512,
         "start_shard": 0,
         "end_shard": 47,
         "shard_width": 3,
