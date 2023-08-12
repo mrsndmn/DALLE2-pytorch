@@ -1,5 +1,5 @@
 #!/bin/env bash
-#SBATCH --job-name="fulinference_aud2"
+#SBATCH --job-name="fulinf"
 #SBATCH --ntasks=1              # Количество MPI процессов
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
 #SBATCH --cpus-per-task=2       # Количество ядер CPU, выделенных для одного процесса

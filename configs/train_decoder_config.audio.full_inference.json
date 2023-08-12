@@ -87,25 +87,26 @@
     },
     "tracker": {
         "overwrite_data_path": true,
-        "data_path": ".decoder_full",
+        "data_path": ".decoder_full_inference",
 
         "log": {
             "log_type": "wandb",
             "wandb_entity": "hsemrsndmn",
-            "wandb_project": "dalle2_decoder_full",
+            "wandb_project": "dalle2_decoder_full_inference",
             "verbose": true
         },
 
         "load": {
-            "load_from": null
+            "load_from": "local",
+            "file_path": ".decoder_full/latest_checkpoint.pth"
         },
 
         "save": [
             {
                 "save_to": "local",
                 "save_type": "checkpoint",
-                "save_latest_to": ".decoder_full/latest_checkpoint.pth",
-                "save_best_to": ".decoder_full/best_checkpoint.pth"
+                "save_latest_to": ".decoder_full_inference/latest_checkpoint.pth",
+                "save_best_to": ".decoder_full_inference/best_checkpoint.pth"
             }
         ]
     }

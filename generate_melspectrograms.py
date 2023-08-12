@@ -10,8 +10,6 @@ from multiprocessing import Pool
 import time
 import os
 
-import argparse
-
 import torchaudio
 import webdataset as wds
 
@@ -27,12 +25,6 @@ from transformers import ClapModel, AutoProcessor, ClapProcessor
 
 # riffusion repo must be script working directory
 
-parser = argparse.ArgumentParser(description="Dataset preparation script.")
-parser.add_argument("--prepare-metadata", default=False, action='store_true')
-parser.add_argument("--prepare-spectrograms", default=False, action='store_true')
-
-args = parser.parse_args()
-
 name = "laion/clap-htsat-unfused"
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -45,7 +37,7 @@ dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
 audio_dir = "../data/audiocaps_train/"
 
-webdataset_dir = "../data/audiocaps_train_embeddings/webdataset/"
+webdataset_dir = "../data/audiocaps_train_embeddings/webdataset_regenerated/"
 
 # couny_spectrograms = 1000
 couny_spectrograms = 0
@@ -59,8 +51,8 @@ if not os.path.isdir(webdataset_dir):
 audio_dir_files = set(os.listdir(audio_dir))
 
 nfft = 1024
-num_mels = 80
-hop_size = 256
+num_mels = 64
+hop_size = 160
 win_size = 1024
 fmin = 0
 fmax = 8000
@@ -68,6 +60,18 @@ fmax = 8000
 
 webdataset_shard = 0
 sink = None
+
+def get_melspectrogram_from_waveform(waveform, sample_rate):
+
+    expected_melspec_samplerate = 16000
+    waveform_resampled = waveform[:1, :]
+    if sample_rate != expected_melspec_samplerate:
+        waveform_resampled = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_melspec_samplerate)
+
+    mel = mel_spectrogram(waveform_resampled, nfft, num_mels, sample_rate, hop_size, win_size, fmin, fmax, center=False)
+    mel = torch.exp(mel)
+
+    return mel
 
 def process_dataset_idx(i):
 
@@ -102,10 +106,6 @@ def process_dataset_idx(i):
             sample_rate = expected_sample_rate
 
         processed_inputs = processor(text=[row['caption']], audios=waveform[0, :].numpy(), sampling_rate=sample_rate, return_tensors="pt")
-        # processed_inputs = processor(text=[row['caption']], audios=waveform, sampling_rate=sample_rate, return_tensors="pt", padding=True)
-        # processed_inputs_text = processor( return_tensors="pt", padding=True)
-        # print("processed_inputs", processed_inputs)
-        # print("processed_inputs", processed_inputs.input_features.shape)
 
         # clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
         for k, v in processed_inputs.items():
@@ -113,11 +113,7 @@ def process_dataset_idx(i):
 
         clap_outputs = clap(**processed_inputs)
 
-        expected_sample_rate = 16000 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 16000 sampling rate
-        waveform22 = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
-
-        mel = mel_spectrogram(waveform22, nfft, num_mels, sample_rate, hop_size, win_size, fmin, fmax, center=False)
-        mel = torch.exp(mel)
+        mel = get_melspectrogram_from_waveform(waveform, sample_rate)
 
         sink.write({
             "__key__": "sample{:06d}".format(i),
@@ -134,16 +130,17 @@ def process_dataset_idx(i):
     return
 
 
-print("prepare melspectrograms")
+if __name__ == "__main__":
+    print("prepare melspectrograms")
 
-for i in tqdm(range(len(dataset))):
-    process_dataset_idx(i)
+    for i in tqdm(range(len(dataset))):
+        process_dataset_idx(i)
 
-sink.close()
+    sink.close()
 
-# with Pool(processes=4) as pool:
+    # with Pool(processes=4) as pool:
 
-#     result = list(tqdm(pool.imap(process_dataset_idx, range(len(dataset))), total=len(dataset), desc='prepare spectrograms'))
+    #     result = list(tqdm(pool.imap(process_dataset_idx, range(len(dataset))), total=len(dataset), desc='prepare spectrograms'))
 
-print("webdataset_dir files are prepared:", webdataset_dir)
+    print("webdataset_dir files are prepared:", webdataset_dir)
 

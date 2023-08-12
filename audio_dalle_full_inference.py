@@ -96,7 +96,7 @@ clap_text_embeddings_normalized = clap_text_outputs.text_embeds / clap_text_outp
 
 audio_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shape, text_cond = { "text_embed": clap_text_embeddings_normalized.to(device) } )
 
-decoder_base_path = '.decoder_u2_19.07_inference'
+decoder_base_path = '.decoder_full_inference'
 
 if not os.path.exists(decoder_base_path):
     os.mkdir(decoder_base_path)
@@ -104,7 +104,7 @@ if not os.path.exists(decoder_base_path):
 if not os.path.exists(decoder_base_path + '/full_inference'):
     os.mkdir(decoder_base_path + '/full_inference')
 
-decoder_config_path = 'configs/train_decoder_config.audio.u2_inference.json'
+decoder_config_path = 'configs/train_decoder_config.audio.full_inference.json'
 
 from train_decoder import create_tracker, recall_trainer, generate_samples
 from dalle2_pytorch.trainer import DecoderTrainer
