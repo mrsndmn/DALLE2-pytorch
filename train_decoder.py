@@ -126,13 +126,17 @@ def get_example_data(dataloader, device, n=5):
     captions = []
 
     if n == 0:
+        print("get_example_data n == 0. cant return any data")
         return []
 
     for batch_item in dataloader:
-        # print("get_example_data batch_item", batch_item)
+        print("get_example_data batch_item", batch_item.keys())
         audio_melspec = batch_item['audio_melspec']
         audio_emb = batch_item['audio_emb']
         txt = batch_item['txt']
+
+        if len(batch_item['txt']) == 0:
+            print("no text found in dataloader for example data:", dataloader)
 
         # print("audio_melspec", audio_melspec)
         # print("audio_emb", audio_emb)
@@ -155,6 +159,11 @@ def get_example_data(dataloader, device, n=5):
 
         audio_melspec = audio_melspec.to(device=device, dtype=torch.float)
         audio_melspectrograms.extend(list(audio_melspec))
+
+        # TODO fix crutch no txt data is passed for validation
+        if len(txt) == 0:
+            txt = [ '' ] * len(audio_melspec)
+
         captions.extend(list(txt))
         if len(audio_melspectrograms) >= n:
             break
@@ -236,6 +245,14 @@ def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=Non
     # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
     int_real_images = real_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)
     int_generated_images = generated_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)
+
+    if int_real_images.shape[1] == 1:
+        int_real_images = int_real_images.repeat(1, 3, 1, 1)
+    if int_generated_images.shape[1] == 1:
+        int_generated_images = int_generated_images.repeat(1, 3, 1, 1)
+
+    print("int_real_images", int_real_images)
+    print("int_generated_images", int_generated_images)
 
     def null_sync(t, *args, **kwargs):
         return [t]
@@ -390,100 +407,100 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for i, batch_item in enumerate(trainer.train_loader):
+            for _ in range(10):
+                for i, batch_item in enumerate(trainer.train_loader):
+                    audio_melspec = batch_item['audio_melspec']
+                    audio_emb = batch_item['audio_emb']
+                    txt = batch_item['txt']
+                    text_emb = batch_item.get('text_emb')
 
-                audio_melspec = batch_item['audio_melspec']
-                audio_emb = batch_item['audio_emb']
-                txt = batch_item['txt']
-                text_emb = batch_item.get('text_emb')
+                    print(f"train: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
 
-                print(f"train: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
-
-                # We want to count the total number of samples across all processes
-                sample_length_tensor[0] = len(audio_melspec)
-                all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
-                total_samples = all_samples.sum().item()
-                sample += total_samples
-                samples_seen += total_samples
-                has_img_embedding = audio_emb is not None
-                if has_img_embedding:
-                    audio_emb, = send_to_device((audio_emb,))
-                has_text_embedding = text_emb is not None
-                if has_text_embedding:
-                    text_emb, = send_to_device((text_emb,))
-                audio_melspec, = send_to_device((audio_melspec,))
-
-                trainer.train()
-                for unet in range(1, trainer.num_unets+1):
-                    # Check if this is a unet we are training
-                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
-                        continue
-
-                    forward_params = {}
+                    # We want to count the total number of samples across all processes
+                    sample_length_tensor[0] = len(audio_melspec)
+                    all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
+                    total_samples = all_samples.sum().item()
+                    sample += total_samples
+                    samples_seen += total_samples
+                    has_img_embedding = audio_emb is not None
                     if has_img_embedding:
-                        forward_params['image_embed'] = audio_emb
-                    else:
-                        # Forward pass automatically generates embedding
-                        assert clip is not None
-                        img_embed, img_encoding = clip.embed_image(audio_melspec)
-                        forward_params['image_embed'] = img_embed
-                    if condition_on_text_encodings:
-                        if has_text_embedding:
-                            forward_params['text_encodings'] = text_emb
+                        audio_emb, = send_to_device((audio_emb,))
+                    has_text_embedding = text_emb is not None
+                    if has_text_embedding:
+                        text_emb, = send_to_device((text_emb,))
+                    audio_melspec, = send_to_device((audio_melspec,))
+
+                    trainer.train()
+                    for unet in range(1, trainer.num_unets+1):
+                        # Check if this is a unet we are training
+                        if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
+                            continue
+
+                        forward_params = {}
+                        if has_img_embedding:
+                            forward_params['image_embed'] = audio_emb
                         else:
-                            # Then we need to pass the text instead
+                            # Forward pass automatically generates embedding
                             assert clip is not None
-                            tokenized_texts = tokenize(txt, truncate=True).to(inference_device)
-                            assert tokenized_texts.shape[0] == len(audio_melspec), f"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(audio_melspec)})"
-                            text_embed, text_encodings = clip.embed_text(tokenized_texts)
-                            forward_params['text_encodings'] = text_encodings
-                    loss = trainer.forward(audio_melspec, **forward_params, unet_number=unet, _device=inference_device)
-                    trainer.update(unet_number=unet)
-                    unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
+                            img_embed, img_encoding = clip.embed_image(audio_melspec)
+                            forward_params['image_embed'] = img_embed
+                        if condition_on_text_encodings:
+                            if has_text_embedding:
+                                forward_params['text_encodings'] = text_emb
+                            else:
+                                # Then we need to pass the text instead
+                                assert clip is not None
+                                tokenized_texts = tokenize(txt, truncate=True).to(inference_device)
+                                assert tokenized_texts.shape[0] == len(audio_melspec), f"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(audio_melspec)})"
+                                text_embed, text_encodings = clip.embed_text(tokenized_texts)
+                                forward_params['text_encodings'] = text_encodings
+                        loss = trainer.forward(audio_melspec, **forward_params, unet_number=unet, _device=inference_device)
+                        trainer.update(unet_number=unet)
+                        unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
 
-                samples_per_sec = (sample - last_sample) / timer.elapsed()
-                timer.reset()
-                last_sample = sample
+                    samples_per_sec = (sample - last_sample) / timer.elapsed()
+                    timer.reset()
+                    last_sample = sample
 
-                if i % TRAIN_CALC_LOSS_EVERY_ITERS == 0:
-                    # We want to average losses across all processes
-                    unet_all_losses = accelerator.gather(unet_losses_tensor)
-                    mask = unet_all_losses != 0
-                    unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)
-                    loss_map = { f"Unet {index} Training Loss": loss.item() for index, loss in enumerate(unet_average_loss) if unet_training_mask[index] }
+                    if i % TRAIN_CALC_LOSS_EVERY_ITERS == 0:
+                        # We want to average losses across all processes
+                        unet_all_losses = accelerator.gather(unet_losses_tensor)
+                        mask = unet_all_losses != 0
+                        unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)
+                        loss_map = { f"Unet {index} Training Loss": loss.item() for index, loss in enumerate(unet_average_loss) if unet_training_mask[index] }
 
-                    # gather decay rate on each UNet
-                    ema_decay_list = {f"Unet {index} EMA Decay": ema_unet.get_current_decay() for index, ema_unet in enumerate(trainer.ema_unets) if unet_training_mask[index]}
+                        # gather decay rate on each UNet
+                        ema_decay_list = {f"Unet {index} EMA Decay": ema_unet.get_current_decay() for index, ema_unet in enumerate(trainer.ema_unets) if unet_training_mask[index]}
 
-                    log_data = {
-                        "Epoch": epoch,
-                        "Sample": sample,
-                        "Step": i,
-                        "Samples per second": samples_per_sec,
-                        "Samples Seen": samples_seen,
-                        **ema_decay_list,
-                        **loss_map
-                    }
+                        log_data = {
+                            "Epoch": epoch,
+                            "Sample": sample,
+                            "Step": i,
+                            "Samples per second": samples_per_sec,
+                            "Samples Seen": samples_seen,
+                            **ema_decay_list,
+                            **loss_map
+                        }
 
-                    if is_master:
-                        print("master tracker.log", log_data)
-                        tracker.log(log_data, step=step())
+                        if is_master:
+                            print("master tracker.log", log_data)
+                            tracker.log(log_data, step=step())
 
-                # todo не уверен, но возможно, из-за этого места мог залипать мастер
-                # if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope
-                #     # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
-                #     print("Saving snapshot")
-                #     last_snapshot = sample
-                #     # We need to know where the model should be saved
-                #     save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)
-                #     if exists(n_sample_images) and n_sample_images > 0:
-                #         trainer.eval()
-                #         train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
-                #         tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
-                # accelerator.wait_for_everyone()
+                    # todo не уверен, но возможно, из-за этого места мог залипать мастер
+                    if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope
+                        # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
+                        print("Saving snapshot")
+                        last_snapshot = sample
+                        # We need to know where the model should be saved
+                        save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)
+                        if exists(n_sample_images) and n_sample_images > 0:
+                            trainer.eval()
+                            train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
+                            tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
+                    accelerator.wait_for_everyone()
 
-                if epoch_samples is not None and sample >= epoch_samples:
-                    break
+                    if epoch_samples is not None and sample >= epoch_samples:
+                        break
 
             next_task = 'val'
             sample = 0
@@ -506,6 +523,7 @@ def train(
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
                 text_emb = batch_item.get('text_emb')
+                print(f"validation step={i} txt len", len(txt))
 
                 print(f"validation: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
 
@@ -579,6 +597,7 @@ def train(
         if next_task == 'eval':
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
+                print("trainer.val_loader", trainer.val_loader)
                 evaluation = evaluate_trainer(trainer, trainer.val_loader, inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
                 if is_master:
                     tracker.log(evaluation, step=step())

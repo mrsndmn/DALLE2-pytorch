@@ -46,23 +46,21 @@
         "learned_variance": false
     },
     "data": {
-        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset/webdataset-{}.tar",
+        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset_regenerated/webdataset-{}.tar",
         "num_workers": 4,
         "batch_size": 128,
         "start_shard": 0,
-        "end_shard": 48,
+        "end_shard": 49,
         "shard_width": 3,
         "index_width": 4,
         "splits": {
-            "train": 0.90,
-            "val": 0.05,
-            "test": 0.05
+            "train": 0.80,
+            "val": 0.1,
+            "test": 0.1
         },
         "shuffle_train": true,
         "resample_train": false,
-        "preprocessing": {
-            "ToTensor": true
-        }
+        "preprocessing": {}
     },
     "train": {
         "epochs": 1000,
@@ -82,8 +80,11 @@
         "unet_training_mask": [ true, true, true ]
     },
     "evaluate": {
-        "n_evaluation_samples": 2,
-        "device": "cuda:0"
+        "n_evaluation_samples": 10,
+        "device": "cuda:0",
+        "FID": {
+            "feature": 2048
+        }
     },
     "tracker": {
         "overwrite_data_path": true,

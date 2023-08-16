@@ -297,10 +297,12 @@ def create_audio_embedding_dataloader(
 
     def my_collate_fn(batch):
 
-
         # audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 1, 3)
-        audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 3, 1)
+        audio_melspec_stacked = torch.stack([ torch.tensor(x['audio_melspec']) for x in batch ])
         # print("audio_melspec_stacked", audio_melspec_stacked.shape)
+        # print("audio_melspec_stacked.shape", audio_melspec_stacked.shape)
+        # print("caption", batch[0]["txt"])
+        # print("audio_melspec_stacked", audio_melspec_stacked[0, 0, :1, :10])
 
         return {
             "audio_emb": torch.stack([ torch.tensor(x['audio_emb']) for x in batch ])[:, 0, :],

@@ -104,41 +104,18 @@ text_prepend = ""
 
 real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)
 
-
-def save_melspec(melspec_t, file_prefix, melspec_type="gen"):
-
-    mepspec = melspec_t.cpu().numpy()
-
-    base_path_prefix = decoder_base_path + "/decoder_inference"
-
-    np.save(base_path_prefix + "/melspec_" + melspec_type + "_" + file_prefix + ".npy", mepspec)
-
-    import matplotlib.pyplot as plt
-
-    plt.title(melspec_type + " melspec: " + input_text)
-    plt.imshow(mepspec[0, :, :])
-    plt.savefig(base_path_prefix + "/melspec_" + melspec_type  + "_" + file_prefix + ".png")
-    plt.clf()
-
-    generated_image_for_vocoder = melspec_t.permute(0, 2, 1)
-    assert generated_image_for_vocoder.shape == (1, 512, 64), f'vocoder shape is not ok {generated_image_for_vocoder.shape}'
-
-    sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
-
-    torchaudio.save( base_path_prefix + "/" + melspec_type + file_prefix + ".wav", sample_waveform, 16000 )
-
-    return
-
+from inference_utils import save_melspec
 
 for real_image, generated_image, input_text in zip(real_images, generated_images, captions):
+
+    print("generated_image.shape ", generated_image.shape)
+    print("real_image.shape      ", real_image.shape)
 
     gen_melspec_t = spectral_normalize_torch(generated_image).detach()
     target_melspec_t = spectral_normalize_torch(real_image).detach()
 
-    sample_file_suffix = input_text.replace(" ", "_").lower()
-
-    save_melspec(gen_melspec_t, sample_file_suffix, melspec_type="gen")
-    save_melspec(target_melspec_t, sample_file_suffix, melspec_type="tgt")
+    save_melspec(audioLDMpipe, decoder_base_path, gen_melspec_t, input_text, melspec_type="gen")
+    save_melspec(audioLDMpipe, decoder_base_path, target_melspec_t, input_text, melspec_type="tgt")
 
 
 print("done")

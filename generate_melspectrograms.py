@@ -120,7 +120,8 @@ def process_dataset_idx(i):
             "melspectrogram.npy": np.array(mel),
             "audio_emb.npy": clap_outputs.audio_embeds.detach().cpu().numpy(),
             "text_emb.npy": clap_outputs.text_embeds.detach().cpu().numpy(),
-            "txt": row['caption']
+            "txt": row['caption'],
+            "youtube_id": row['youtube_id'],
         })
 
 

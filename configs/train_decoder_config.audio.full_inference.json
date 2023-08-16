@@ -46,11 +46,11 @@
         "learned_variance": false
     },
     "data": {
-        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset/webdataset-{}.tar",
+        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset_regenerated/webdataset-{}.tar",
         "num_workers": 4,
         "batch_size": 128,
         "start_shard": 0,
-        "end_shard": 48,
+        "end_shard": 49,
         "shard_width": 3,
         "index_width": 4,
         "splits": {
@@ -60,9 +60,7 @@
         },
         "shuffle_train": true,
         "resample_train": false,
-        "preprocessing": {
-            "ToTensor": true
-        }
+        "preprocessing": {}
     },
     "train": {
         "epochs": 1000,
