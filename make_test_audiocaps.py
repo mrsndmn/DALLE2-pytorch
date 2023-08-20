@@ -14,9 +14,9 @@ audio_dir_files = set(os.listdir(data_dir))
 
 batch = []
 
-MAX_BATCH_SIZE = 50
+MAX_BATCH_SIZE = 100
 
-for x in dataset.iterrows():
+for _, x in dataset.iterrows():
     file_name = x['youtube_id'] + ".wav"
 
     if file_name in audio_dir_files:

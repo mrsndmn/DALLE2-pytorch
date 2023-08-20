@@ -22,7 +22,9 @@ def save_melspec(audioLDMpipe, base_path_prefix, melspec_t, input_text, file_pre
 
     sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
 
-    torchaudio.save( base_path_prefix + "/" + melspec_type + file_prefix + ".wav", sample_waveform, 16000 )
+    result_wav_file = base_path_prefix + "/" + melspec_type + file_prefix + ".wav"
+    torchaudio.save( result_wav_file, sample_waveform, 16000 )
+    print("saved wav:", result_wav_file)
 
     return
 

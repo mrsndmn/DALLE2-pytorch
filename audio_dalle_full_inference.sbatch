@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=2       # Количество ядер CPU, выделенных для одного процесса
 #SBATCH --gpus-per-node=1       # Количество GPU на один узел
 #SBATCH -C type_a|type_b|type_c|type_e
-#SBATCH --time-min=10
+#SBATCH --time-min=60
 
 module purge
 module load Python
@@ -22,4 +22,4 @@ set -o xtrace
 
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/python3 audio_dalle_full_inference.py
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file full_inference_config.yaml --main_process_port 29501 audio_dalle_full_inference.py

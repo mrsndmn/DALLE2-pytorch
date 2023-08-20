@@ -258,6 +258,7 @@ class DecoderConfig(BaseModel):
     learned_variance: SingularOrIterable[bool] = True
     image_cond_drop_prob: float = 0.1
     text_cond_drop_prob: float = 0.5
+    # unconditional: bool = False # todo
 
     def create(self):
         decoder_kwargs = self.dict()

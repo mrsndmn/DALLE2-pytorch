@@ -172,12 +172,11 @@ def get_example_data(dataloader, device, n=5):
     # print("audio_embeddings", len(audio_embeddings))
     return list(zip(audio_melspectrograms[:n], audio_embeddings[:n], text_embeddings[:n], captions[:n]))
 
-def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=True):
+def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=False):
     """
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
     """
-    # print("example_data", example_data)
     real_images, img_embeddings, text_embeddings, txts = zip(*example_data)
     sample_params = {}
     if img_embeddings[0] is None:
@@ -209,8 +208,9 @@ def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_une
         sample_params["image"] = torch.stack(real_images)
     if device is not None:
         sample_params["_device"] = device
-    # print("sample_params", sample_params)
+    print("sample_params", sample_params)
     samples = trainer.sample(**sample_params, _cast_deepspeed_precision=False)  # At sampling time we don't want to cast to FP16
+
     generated_images = list(samples)
     captions = [text_prepend + txt for txt in txts]
     if match_image_size:
@@ -407,7 +407,7 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for _ in range(10):
+            for _ in range(5):
                 for i, batch_item in enumerate(trainer.train_loader):
                     audio_melspec = batch_item['audio_melspec']
                     audio_emb = batch_item['audio_emb']

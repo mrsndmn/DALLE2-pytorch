@@ -102,7 +102,7 @@ condition_on_text_encodings = False # todo is it?
 cond_scale = 1.0
 text_prepend = ""
 
-real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)
+real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend, match_image_size=False)
 
 from inference_utils import save_melspec
 

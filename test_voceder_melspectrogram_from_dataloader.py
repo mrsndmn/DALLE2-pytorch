@@ -10,6 +10,8 @@ from diffusers import AudioLDMPipeline
 from meldataset import spectral_normalize_torch
 from train_decoder import create_dataloaders, TrainDecoderConfig
 
+from train_decoder import create_dataloaders, get_example_data
+
 
 config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full.json')
 all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))
@@ -27,11 +29,20 @@ dataloaders = create_dataloaders(
     seed = config.seed,
 )
 
-dataloader = dataloaders['train']
+dataloader = dataloaders['val']
 
 batch = next(iter(dataloader))
 
 melspectrogarm = batch['audio_melspec'][0]
+
+
+device = 'cpu'
+examples = get_example_data(dataloader, device, 10)
+real_images, img_embeddings, text_embeddings, txts = zip(*examples)
+
+melspectrogarm = real_images[0]
+print("melspectrogarm from real_images", melspectrogarm[:1, :10])
+
 
 print("melspectrogarm", melspectrogarm[:1, :10])
 
@@ -40,6 +51,7 @@ np.save("melspectrogarm_from_dataloader.npy", melspectrogarm.detach().cpu().nump
 print("caption:", batch["txt"][0])
 
 assert len(melspectrogarm.shape) == 3, f"melspectrogarm.shape={melspectrogarm.shape}"
+
 
 melspectrogarm = melspectrogarm.permute(0, 2, 1)
 melspectrogarm = spectral_normalize_torch(melspectrogarm)

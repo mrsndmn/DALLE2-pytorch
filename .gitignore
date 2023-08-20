@@ -1,5 +1,7 @@
 # default experiment tracker data
 .tracker-data/
+.audioldm*
+.audioldm
 
 # Configuration Files
 configs/*

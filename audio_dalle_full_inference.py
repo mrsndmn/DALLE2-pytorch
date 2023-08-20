@@ -12,7 +12,7 @@ from diffusers import AudioLDMPipeline
 
 from dalle2_pytorch.train_configs import TrainDecoderConfig
 
-from transformers import ClapTextModelWithProjection, AutoTokenizer
+from transformers import ClapModel, AutoTokenizer
 
 from dalle2_pytorch import DiffusionPrior
 from dalle2_pytorch.train_configs import TrainDiffusionPriorConfig
@@ -40,18 +40,15 @@ def audio_dalle2_full_inference(input_data, generated_output_dir=None):
     print("device", device)
 
     print("getting model")
-    clap = ClapTextModelWithProjection.from_pretrained(name).float()
+    clap = ClapModel.from_pretrained(name).to(device).float()
     # processor =  ClapProcessor.from_pretrained(name)
     print("getting tokenizer")
     tokenizer =  AutoTokenizer.from_pretrained(name)
 
     print("run tokenizer prompt", input_texts)
     processed_inputs_text = tokenizer(text=input_texts, padding=True, return_tensors="pt")
-
-    print("run clap")
-    clap_text_outputs = clap(**processed_inputs_text)
-
-    print("clap_text_outputs.text_embeds.shape", clap_text_outputs.text_embeds.shape) # [ 1, 512 ]
+    for k, v in processed_inputs_text.items():
+        processed_inputs_text[k] = v.to(device)
 
     prior_train_state = torch.load('.prior/latest_checkpoint.pth', map_location=device)
 
@@ -61,9 +58,9 @@ def audio_dalle2_full_inference(input_data, generated_output_dir=None):
     diffusionPrior.load_state_dict(prior_train_state['model'])
     diffusionPrior.to(device)
 
-    clap_text_embeddings_normalized = clap_text_outputs.text_embeds / clap_text_outputs.text_embeds.norm(p=2, dim=-1, keepdim=True)
+    clap_text_embeddings_normalized = clap.get_text_features(input_ids=processed_inputs_text['input_ids'], attention_mask=processed_inputs_text['attention_mask'])
 
-    audio_embedds = diffusionPrior.p_sample_loop( clap_text_outputs.text_embeds.shape, text_cond = { "text_embed": clap_text_embeddings_normalized.to(device) } )
+    audio_embedds = diffusionPrior.p_sample_loop( clap_text_embeddings_normalized.shape, text_cond = { "text_embed": clap_text_embeddings_normalized.to(device) } )
 
     decoder_base_path = '.decoder_full_inference'
 
@@ -93,6 +90,7 @@ def audio_dalle2_full_inference(input_data, generated_output_dir=None):
         raise Exception("\n\n\n!!!!NO RECALL WAS CALLED!!!!\n\n\n")
 
     audio_embedds_normalized = audio_embedds / audio_embedds.norm(p=2, dim=-1, keepdim=True)
+    # audio_embedds_normalized = audio_embedds
 
     examples = []
     for i in range(audio_embedds_normalized.shape[0]):
