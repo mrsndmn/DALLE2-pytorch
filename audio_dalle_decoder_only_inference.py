@@ -28,8 +28,6 @@ from diffusers import AudioLDMPipeline
 
 from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig
 
-from transformers import ClapTextModelWithProjection, AutoTokenizer
-
 from train_decoder import create_dataloaders, get_example_data
 from dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior
 from dalle2_pytorch.train_configs import TrainDiffusionPriorConfig

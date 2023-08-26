@@ -2,6 +2,8 @@
 .tracker-data/
 .audioldm*
 .audioldm
+.test_voceder/
+*.wav
 
 # Configuration Files
 configs/*

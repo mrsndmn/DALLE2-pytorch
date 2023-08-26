@@ -28,7 +28,7 @@ print("melspectrogarm.shape", melspectrogarm.shape)
 audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
 restored_waveform = audioLDMpipe.vocoder( melspectrogarm ).detach().cpu()
 
-out_filename = wav_filename + "melspec_restored.wav"
+out_filename = wav_filename + "_melspec_restored.wav"
 torchaudio.save(out_filename, restored_waveform, 16000)
 
 print("wav saved", out_filename)

@@ -117,7 +117,6 @@ def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
     This is important to do as a user may forget they do not have embeddings in their webdataset and neglect to add them using the embedding_folder_url parameter.
     """
     for sample in samples:
-
         if 'melspectrogram.npy' not in sample:
             print("'melspectrogram.npy' not in sample", list(sample.keys()))
             continue
@@ -185,8 +184,6 @@ class AudioEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
         """
         super().__init__()
         keys = ["audio_melspec", "audio_emb"] + extra_keys
-
-        # print("urls", urls)
 
         self.key_map = {key: i for i, key in enumerate(keys)}
         self.resampling = resample
@@ -308,6 +305,7 @@ def create_audio_embedding_dataloader(
             "audio_emb": torch.stack([ torch.tensor(x['audio_emb']) for x in batch ])[:, 0, :],
             "audio_melspec": audio_melspec_stacked,
             "txt":[ x['txt'] for x in batch ],
+            "youtube_id":[ x['youtube_id'] for x in batch ],
         }
 
     return DataLoader(

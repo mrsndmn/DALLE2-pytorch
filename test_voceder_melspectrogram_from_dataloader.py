@@ -5,6 +5,8 @@ sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/diffusers/src')
 from generate_melspectrograms import get_melspectrogram_from_waveform
 import numpy as np
 
+from inference_utils import save_melspec
+
 import torchaudio
 from diffusers import AudioLDMPipeline
 from meldataset import spectral_normalize_torch
@@ -13,7 +15,7 @@ from train_decoder import create_dataloaders, TrainDecoderConfig
 from train_decoder import create_dataloaders, get_example_data
 
 
-config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full.json')
+config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full.regenerated2.json')
 all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))
 
 dataloaders = create_dataloaders(
@@ -29,39 +31,26 @@ dataloaders = create_dataloaders(
     seed = config.seed,
 )
 
-dataloader = dataloaders['val']
+dataloader = dataloaders['train']
 
 batch = next(iter(dataloader))
 
-melspectrogarm = batch['audio_melspec'][0]
-
-
 device = 'cpu'
 examples = get_example_data(dataloader, device, 10)
-real_images, img_embeddings, text_embeddings, txts = zip(*examples)
 
-melspectrogarm = real_images[0]
-print("melspectrogarm from real_images", melspectrogarm[:1, :10])
+i = 0
+for melspectrogarm, img_embeddings, text_embeddings, input_text in examples:
 
+    # np.save(f"melspectrogarm_from_dataloader{i}.npy", melspectrogarm.detach().cpu().numpy())
 
-print("melspectrogarm", melspectrogarm[:1, :10])
+    assert len(melspectrogarm.shape) == 3, f"melspectrogarm.shape={melspectrogarm.shape}"
 
-np.save("melspectrogarm_from_dataloader.npy", melspectrogarm.detach().cpu().numpy())
+    audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
 
-print("caption:", batch["txt"][0])
+    target_melspec_t = spectral_normalize_torch( melspectrogarm ).detach()
 
-assert len(melspectrogarm.shape) == 3, f"melspectrogarm.shape={melspectrogarm.shape}"
+    decoder_base_path = '.test_voceder'
+    save_melspec(audioLDMpipe, decoder_base_path, target_melspec_t, input_text, melspec_type=f"test_vocoder_{i}__")
 
+    i += 1
 
-melspectrogarm = melspectrogarm.permute(0, 2, 1)
-melspectrogarm = spectral_normalize_torch(melspectrogarm)
-
-assert melspectrogarm.shape == (1, 512, 64), f'vocoder shape is not ok {melspectrogarm.shape}'
-
-audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
-restored_waveform = audioLDMpipe.vocoder( melspectrogarm ).detach().cpu()
-
-out_filename = "train_dataloader_restored.wav"
-torchaudio.save(out_filename, restored_waveform, 16000)
-
-print("melspec saved", out_filename)

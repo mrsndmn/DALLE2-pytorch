@@ -37,7 +37,7 @@ dataset = pd.read_csv("../audiocaps/dataset/train.csv")
 
 audio_dir = "../data/audiocaps_train/"
 
-webdataset_dir = "../data/audiocaps_train_embeddings/webdataset_regenerated/"
+webdataset_dir = "../data/audiocaps_train_embeddings/webdataset_regenerated2/"
 
 # couny_spectrograms = 1000
 couny_spectrograms = 0
@@ -61,6 +61,8 @@ fmax = 8000
 webdataset_shard = 0
 sink = None
 
+shard_size = 10
+
 def get_melspectrogram_from_waveform(waveform, sample_rate):
 
     expected_melspec_samplerate = 16000
@@ -75,7 +77,7 @@ def get_melspectrogram_from_waveform(waveform, sample_rate):
 
 def process_dataset_idx(i):
 
-    current_shard = i // 1000
+    current_shard = i // shard_size
     global sink, webdataset_shard
     if sink is None or webdataset_shard != current_shard:
         webdataset_shard = current_shard
@@ -99,13 +101,12 @@ def process_dataset_idx(i):
 
         waveform, sample_rate = torchaudio.load(fill_path_audio)
 
-        waveform = waveform[:1, :]
-        expected_sample_rate = 48000 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 22050 sampling rate
-        if sample_rate != expected_sample_rate:
-            waveform = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=expected_sample_rate)
-            sample_rate = expected_sample_rate
+        clap_waveform = waveform[:1, :]
+        clap_expected_sample_rate = 48000 # хотя CLAP требует 4800 сэмпл рейт, этот декодер будет генерить 22050 sampling rate
+        if sample_rate != clap_expected_sample_rate:
+            clap_waveform = torchaudio.functional.resample(waveform, orig_freq=sample_rate, new_freq=clap_expected_sample_rate)
 
-        processed_inputs = processor(text=[row['caption']], audios=waveform[0, :].numpy(), sampling_rate=sample_rate, return_tensors="pt")
+        processed_inputs = processor(text=[row['caption']], audios=clap_waveform[0, :].numpy(), sampling_rate=clap_expected_sample_rate, return_tensors="pt")
 
         # clap_outputs = clap(**processed_inputs_text, **processed_inputs_audio)
         for k, v in processed_inputs.items():

@@ -83,7 +83,7 @@ def create_dataloaders(
         # text_embeddings_url=text_embeddings_url,
         index_width=index_width,
         shuffle_num = None,
-        extra_keys= ["txt"],
+        extra_keys= ["txt", "youtube_id"],
         shuffle_shards = shuffle,
         resample_shards = resample,
         audio_preproc=audio_preproc,
@@ -131,6 +131,8 @@ def get_example_data(dataloader, device, n=5):
 
     for batch_item in dataloader:
         print("get_example_data batch_item", batch_item.keys())
+        print("youtube_id", batch_item['youtube_id'])
+
         audio_melspec = batch_item['audio_melspec']
         audio_emb = batch_item['audio_emb']
         txt = batch_item['txt']
