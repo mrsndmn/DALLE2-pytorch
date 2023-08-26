@@ -15,7 +15,7 @@ from train_decoder import create_dataloaders, TrainDecoderConfig
 from train_decoder import create_dataloaders, get_example_data
 
 
-config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full.regenerated2.json')
+config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full.json')
 all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))
 
 dataloaders = create_dataloaders(

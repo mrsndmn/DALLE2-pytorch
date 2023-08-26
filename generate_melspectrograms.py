@@ -61,7 +61,7 @@ fmax = 8000
 webdataset_shard = 0
 sink = None
 
-shard_size = 10
+shard_size = 1000
 
 def get_melspectrogram_from_waveform(waveform, sample_rate):
 

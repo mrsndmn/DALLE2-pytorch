@@ -46,7 +46,7 @@
         "learned_variance": false
     },
     "data": {
-        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset_regenerated/webdataset-{}.tar",
+        "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset_regenerated2/webdataset-{}.tar",
         "num_workers": 4,
         "batch_size": 128,
         "start_shard": 0,
