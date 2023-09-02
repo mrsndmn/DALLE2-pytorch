@@ -90,7 +90,6 @@ dataloaders = create_dataloaders(
     seed = config.seed,
 )
 
-
 examples = get_example_data(dataloaders['train'], device, 10)
 
 clip = None
@@ -102,7 +101,7 @@ text_prepend = ""
 
 real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend, match_image_size=False)
 
-from inference_utils import save_melspec
+from scripts.eval.inference_utils import save_melspec
 
 for real_image, generated_image, input_text in zip(real_images, generated_images, captions):
 

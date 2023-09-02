@@ -1,3 +1,4 @@
+from logging import warning
 import os
 import webdataset as wds
 import torch
@@ -6,7 +7,7 @@ import numpy as np
 import fsspec
 import shutil
 import random
-
+import warnings
 
 def get_shard(filename):
     """
@@ -111,7 +112,7 @@ def join_embeddings(samples, handler=wds.handlers.reraise_exception):
             else:
                 break
 
-def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
+def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception, hack_audio_embeddings=False):
     """
     Requires that both the image and embedding are present in the sample
     This is important to do as a user may forget they do not have embeddings in their webdataset and neglect to add them using the embedding_folder_url parameter.
@@ -124,8 +125,14 @@ def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
             print("'audio_emb.npy' not in sample", list(sample.keys()))
             continue
 
+        sample['text_emb'] = sample.pop('text_emb.npy')
         sample['audio_emb'] = sample.pop('audio_emb.npy')
         sample['audio_melspec'] = sample.pop('melspectrogram.npy')
+
+        if hack_audio_embeddings:
+            sample['audio_emb'] = sample['text_emb']
+            warnings.warn("using hacked audio embeddings -- this means there will be no prior")
+
 
         audio_max_len = 512
         if sample['audio_melspec'].shape[-1] < audio_max_len:
@@ -165,7 +172,8 @@ class AudioEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             extra_keys=[],
             handler=wds.handlers.reraise_exception,
             resample=False,
-            shuffle_shards=True
+            shuffle_shards=True,
+            hack_audio_embeddings=False
     ):
         """
         Modeled directly off of the WebDataset constructor
@@ -230,7 +238,7 @@ class AudioEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
         self.append(wds.decode(handler=handler))
 
         # self.append(join_embeddings)
-        self.append(key_verifier(required_keys=keys, handler=handler))
+        self.append(key_verifier(required_keys=keys, handler=handler, hack_audio_embeddings=hack_audio_embeddings))
         # Apply preprocessing
         self.append(wds.map(self.preproc))
         # self.append(wds.to_tuple(*keys))
@@ -255,6 +263,7 @@ def create_audio_embedding_dataloader(
     resample_shards = False,
     audio_preproc=None,
     extra_keys=[],
+    hack_audio_embeddings=False,
     handler=wds.handlers.reraise_exception#warn_and_continue
 ):
     """
@@ -284,7 +293,8 @@ def create_audio_embedding_dataloader(
         resample=resample_shards,
         extra_keys=extra_keys,
         audio_mepspec_preproc=audio_preproc,
-        handler=handler
+        handler=handler,
+        hack_audio_embeddings=hack_audio_embeddings,
     )
 
     # print('ds[0]', next(iter(ds)))

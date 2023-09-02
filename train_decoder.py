@@ -53,6 +53,7 @@ def create_dataloaders(
     val_prop = 0.15,
     test_prop = 0.10,
     seed = 0,
+    hack_audio_embeddings=False,
     **kwargs
 ):
     """
@@ -87,7 +88,8 @@ def create_dataloaders(
         shuffle_shards = shuffle,
         resample_shards = resample,
         audio_preproc=audio_preproc,
-        handler=wds.handlers.warn_and_continue
+        handler=wds.handlers.warn_and_continue,
+        hack_audio_embeddings=hack_audio_embeddings,
     )
 
     train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
@@ -737,7 +739,7 @@ def initialize_training(config: TrainDecoderConfig, config_path):
 
 # Create a simple click command line interface to load the config and start the training
 @click.command()
-@click.option("--config_file", default="./train_decoder_config.json", help="Path to config file")
+@click.option("--config_file", help="Path to config file")
 def main(config_file):
     config_file_path = Path(config_file)
     config = TrainDecoderConfig.from_json_path(str(config_file_path))

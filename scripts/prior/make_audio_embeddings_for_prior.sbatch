@@ -20,4 +20,4 @@ set -o xtrace
 
 conda run -n audio_dalle2 which python3
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/python3 make_audio_embeddings_for_prior.py
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/python3 scripts/prior/make_audio_embeddings_for_prior.py

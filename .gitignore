@@ -4,6 +4,8 @@
 .audioldm
 .test_voceder/
 *.wav
+*.npy
+
 
 # Configuration Files
 configs/*

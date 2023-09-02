@@ -21,4 +21,4 @@ set -o xtrace
 
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file /home/dtarasov/.cache/huggingface/accelerate/default_config.yaml --main_process_port 29501 train_decoder.py --config_file configs/train_decoder_config.audio.full.json
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file /home/dtarasov/.cache/huggingface/accelerate/default_config.yaml --main_process_port 29501 train_decoder.py $@

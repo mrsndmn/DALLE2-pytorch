@@ -1,5 +1,5 @@
 #!/bin/env bash
-#SBATCH --job-name="gen_mels"
+#SBATCH --job-name="decdata"
 #SBATCH --ntasks=1              # Количество MPI процессов
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
 #SBATCH --gpus-per-task=0       # Количество ядер GPU, выделенных для одного процесса
@@ -20,4 +20,4 @@ set -o xtrace
 
 conda run -n audio_dalle2 which python3
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/python3 generate_melspectrograms.py
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/python3 scripts/data/deocder_prepare_dataset.py

@@ -2,10 +2,10 @@
 import sys
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/diffusers/src')
 
-from generate_melspectrograms import get_melspectrogram_from_waveform
+from scripts.data.decoder_prepare_dataset import get_melspectrogram_from_waveform
 import numpy as np
 
-from inference_utils import save_melspec
+from scripts.eval.inference_utils import save_melspec
 
 import torchaudio
 from diffusers import AudioLDMPipeline

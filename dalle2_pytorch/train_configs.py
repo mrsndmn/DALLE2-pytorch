@@ -292,6 +292,7 @@ class DecoderDataConfig(BaseModel):
     end_shard: int = 9999999
     shard_width: int = 6
     index_width: int = 4
+    hack_audio_embeddings: bool = False
     splits: TrainSplitConfig
     shuffle_train: bool = True
     resample_train: bool = False

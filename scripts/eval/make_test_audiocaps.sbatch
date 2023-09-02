@@ -1,11 +1,11 @@
 #!/bin/env bash
-#SBATCH --job-name="decoinf"
+#SBATCH --job-name="eval"
 #SBATCH --ntasks=1              # Количество MPI процессов
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
 #SBATCH --cpus-per-task=2       # Количество ядер CPU, выделенных для одного процесса
 #SBATCH --gpus-per-node=1       # Количество GPU на один узел
 #SBATCH -C type_a|type_b|type_c|type_e
-#SBATCH --time-min=10
+#SBATCH --time-min=600
 
 module purge
 module load Python
@@ -19,7 +19,6 @@ set -o xtrace
 
 #Executable
 
-
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file full_inference_config.yaml --main_process_port 29501 audio_dalle_decoder_only_inference.py
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file accelerate_configs/full_inference_config.yaml --main_process_port 29501 scripts/eval/make_test_audiocaps.py $@
