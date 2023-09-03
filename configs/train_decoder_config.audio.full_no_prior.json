@@ -7,10 +7,10 @@
                 "cond_dim": 64,
                 "channels": 1,
                 "dim_mults": [1, 2, 3, 4],
-                "attn_dim_head": 16,
-                "attn_heads": 4,
+                "attn_dim_head": 32,
+                "attn_heads": 16,
                 "memory_efficient":true,
-                "self_attn": [false, true, true, true]
+                "self_attn": [true, true, true, true]
             },
             {
                 "dim": 64,
@@ -19,7 +19,7 @@
                 "channels": 1,
                 "dim_mults": [1, 2, 3, 4],
                 "attn_dim_head": 16,
-                "attn_heads": 1,
+                "attn_heads": 8,
                 "memory_efficient":true,
                 "self_attn": [false, false, true, true]
             },
@@ -30,7 +30,7 @@
                 "channels": 1,
                 "dim_mults": [1, 2, 3, 4],
                 "attn_dim_head": 16,
-                "attn_heads": 1,
+                "attn_heads": 8,
                 "memory_efficient":true,
                 "self_attn": [false, false, true, true]
             }
