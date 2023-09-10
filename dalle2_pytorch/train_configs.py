@@ -340,6 +340,7 @@ class DecoderEvaluateConfig(BaseModel):
     IS: Dict[str, Any] = None
     KID: Dict[str, Any] = None
     LPIPS: Dict[str, Any] = None
+    AUDIOLDM_EVAL: Dict[str, Any] = None
 
 class TrainDecoderConfig(BaseModel):
     decoder: DecoderConfig

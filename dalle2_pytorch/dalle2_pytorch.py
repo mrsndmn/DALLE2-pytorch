@@ -2555,7 +2555,8 @@ class Decoder(nn.Module):
         dynamic_thres_percentile = 0.95,
         p2_loss_weight_gamma = 0.,                  # p2 loss weight, from https://arxiv.org/abs/2204.00227 - 0 is equivalent to weight of 1 across time - 1. is recommended
         p2_loss_weight_k = 1,
-        ddim_sampling_eta = 0.                      # can be set to 0. for deterministic sampling afaict
+        ddim_sampling_eta = 0.,                     # can be set to 0. for deterministic sampling afaict
+        input_image_range = None                    # clamps input image ranges
     ):
         super().__init__()
 
@@ -2712,7 +2713,7 @@ class Decoder(nn.Module):
 
         # input image range
 
-        self.input_image_range = (0. , 1.)
+        self.input_image_range = input_image_range
 
         # cascading ddpm related stuff
 
@@ -3181,7 +3182,6 @@ class Decoder(nn.Module):
         cond_scale = 1.,
         start_at_unet_number = 1,
         stop_at_unet_number = None,
-        distributed = False,
         inpaint_image = None,
         inpaint_mask = None,
         inpaint_resample_times = 5,

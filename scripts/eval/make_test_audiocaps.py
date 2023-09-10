@@ -8,9 +8,9 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument( "--config-file", type=str, required=True, help="Path to decoder conifg" )
+parser.add_argument( "--config_file", type=str, required=True, help="Path to decoder conifg" )
 
-parser.add_argument( "--limit-samples", type=str, required=False, help="Generated samples limit", default=1000 )
+parser.add_argument( "--limit_samples", type=str, required=False, help="Generated samples limit", default=500 )
 
 args = parser.parse_args()
 
@@ -28,9 +28,15 @@ batch = []
 
 MAX_BATCH_SIZE = 100
 
-for _, x in dataset.iterrows():
-    file_name = x['youtube_id'] + ".wav"
+seen_youtube_ids = set()
 
+for _, x in dataset.iterrows():
+    if x['youtube_id'] in seen_youtube_ids:
+        continue
+
+    seen_youtube_ids.add(x['youtube_id'])
+
+    file_name = x['youtube_id'] + ".wav"
     if limit_samples <= 0:
         break
 

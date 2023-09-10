@@ -40,11 +40,11 @@
         "blur_kernel_size": 3,
         "image_sizes": [ [32, 128], [64, 256], [64, 512] ],
         "channels": 1,
-        "timesteps": 1000,
+        "timesteps": 10,
         "loss_type": "l2",
         "beta_schedule": [ "cosine", "cosine", "linear" ],
         "learned_variance": false,
-        "input_image_range": [0, 1]
+        "input_image_range": null
     },
     "data": {
         "webdataset_base_url": "../data/audiocaps_train_embeddings/webdataset_regenerated2/webdataset-{}.tar",
@@ -83,19 +83,20 @@
     },
     "evaluate": {
         "n_evaluation_samples": 10,
-        "device": "cuda:0",
-        "FID": {
-            "feature": 2048
+        "AUDIOLDM_EVAL": {
+            "sample_rate": 16000,
+            "audioldm_pipeline_name": "cvssp/audioldm-s-full-v2",
+            "reference_origin_dir": "/home/dtarasov/workspace/hse-audio-dalle2/data/audiocaps_test/"
         }
     },
     "tracker": {
         "overwrite_data_path": true,
-        "data_path": ".decoder_full_no_prior",
+        "data_path": ".decoder_full_no_prior_no_clap_lowrescond",
 
         "log": {
             "log_type": "wandb",
             "wandb_entity": "hsemrsndmn",
-            "wandb_project": "dalle2_decoder_full_no_prior",
+            "wandb_project": "dalle2_decoder_full_no_prior_no_clap_lowrescond",
             "verbose": true
         },
 
@@ -107,8 +108,8 @@
             {
                 "save_to": "local",
                 "save_type": "checkpoint",
-                "save_latest_to": ".decoder_full_no_prior/latest_checkpoint.pth",
-                "save_best_to": ".decoder_full_no_prior/best_checkpoint.pth"
+                "save_latest_to": ".decoder_full_no_prior_no_clap_lowrescond/latest_checkpoint.pth",
+                "save_best_to": ".decoder_full_no_prior_no_clap_lowrescond/best_checkpoint.pth"
             }
         ]
     }

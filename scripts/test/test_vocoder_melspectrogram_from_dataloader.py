@@ -39,7 +39,7 @@ device = 'cpu'
 examples = get_example_data(dataloader, device, 10)
 
 i = 0
-for melspectrogarm, img_embeddings, text_embeddings, input_text in examples:
+for melspectrogarm, img_embeddings, text_embeddings, input_text, youtube_id in examples:
 
     # np.save(f"melspectrogarm_from_dataloader{i}.npy", melspectrogarm.detach().cpu().numpy())
 

@@ -30,23 +30,26 @@ import argparse
 import json
 
 def make_inference_config(decoder_config_path: str):
-    decoder_config = json.load(decoder_config_path)
+    with open(decoder_config_path, 'r') as f:
+        decoder_config = json.load(f)
 
     decoder_config['tracker']['log']['wandb_project'] = decoder_config['tracker']['log']['wandb_project'] + '_inference'
 
     inference_datapath = decoder_config['tracker']['data_path'] + '_inference'
     decoder_config['tracker']['data_path'] = inference_datapath
-    os.makedirs(inference_datapath)
+    if not os.path.isdir(inference_datapath):
+        os.mkdir(inference_datapath)
 
-    decoder_config['tracker']['load']['load_from'] = decoder_config['tracker']['save']['save_latest_to']
+    decoder_config['tracker']['load']['load_from'] = 'local'
+    decoder_config['tracker']['load']['file_path'] = decoder_config['tracker']['save'][0]['save_latest_to']
 
-    decoder_config['tracker']['save']['save_latest_to'] = os.path.join(inference_datapath + 'latest_checkpoint.pth')
-    decoder_config['tracker']['save']['save_best_to'] = os.path.join(inference_datapath + 'best_checkpoint.pth')
+    decoder_config['tracker']['save'][0]['save_latest_to'] = os.path.join(inference_datapath, 'latest_checkpoint.pth')
+    decoder_config['tracker']['save'][0]['save_best_to'] = os.path.join(inference_datapath, 'best_checkpoint.pth')
 
     print("updated tracker config:", decoder_config['tracker'])
 
     decoder_config_basename = os.path.basename(decoder_config_path)
-    decoder_inference_config_path = os.path.join('config', 'inference', decoder_config_basename)
+    decoder_inference_config_path = os.path.join('configs', 'inference', decoder_config_basename)
 
     with open(decoder_inference_config_path, 'w') as f:
         json.dump(decoder_config, f, indent=4)
@@ -57,7 +60,6 @@ def make_inference_config(decoder_config_path: str):
 def audio_dalle2_full_inference(
         input_data, # [ { id: "xxx", text: "blabla" } ]
         decoder_config_path=None,
-        generated_output_dir=None,
     ):
 
     if decoder_config_path is None:
@@ -130,9 +132,6 @@ def audio_dalle2_full_inference(
     else:
         raise Exception("\n\n\n!!!!NO RECALL WAS CALLED!!!!\n\n\n")
 
-    if audio_embeddings_file is not None:
-        np.save(audio_embeddings_file, audio_embedds.detach().cpu().numpy())
-
     audio_embedds_normalized = audio_embedds / audio_embedds.norm(p=2, dim=-1, keepdim=True)
 
     # audio_embedds_normalized = audio_embedds
@@ -141,10 +140,11 @@ def audio_dalle2_full_inference(
     for i in range(audio_embedds_normalized.shape[0]):
         examples.append([ torch.rand([ 1, 64, 512 ]).to(device), audio_embedds_normalized[i, :].to(device), None, input_texts[i] ],)
 
-    real_images, generated_images, captions = generate_samples(trainer, examples, device=device, match_image_size=False)
+    real_images, generated_images, captions, youtube_ids = generate_samples(trainer, examples, device=device, match_image_size=False)
 
-    if generated_output_dir is None:
-        generated_output_dir = decoder_base_path + "/decoder_inference"
+    generated_output_dir = decoder_base_path + "/decoder_inference"
+    if not os.path.isdir(generated_output_dir):
+        os.mkdir(generated_output_dir)
 
     for i, input_text in enumerate(input_texts):
         file_id = input_data[i]['id']

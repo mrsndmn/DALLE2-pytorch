@@ -39,8 +39,8 @@ stages:
   decoder_no_prior:
     cmd:
       - sbatch --wait --output decoder_no_prior.log
-            train_decoder_full.sbatch
-            --config_file configs/train_decoder_config.audio.full_no_prior.json
+          train_decoder_full.sbatch
+          --config_file configs/train_decoder_config.audio.full_no_prior.json
     deps:
       - "../data/audiocaps_train_embeddings/webdataset_regenerated2/"
       - train_decoder_full.sbatch
@@ -52,11 +52,11 @@ stages:
       - .decoder_full_no_prior/
 
   decoder_no_prior_eval:
-    cmd: >-
-      sbatch --wait
-        --output eval_make_test_audiocaps.log
-        scripts/eval/make_test_audiocaps.sbatch
-        --config_file configs/train_decoder_config.audio.full_no_prior.json
+    cmd:
+      - sbatch --wait
+          --output eval_make_test_audiocaps.log
+          scripts/eval/make_test_audiocaps.sbatch
+          --config_file configs/train_decoder_config.audio.full_no_prior.json
     deps:
       - "../data/audiocaps_train_embeddings/webdataset_regenerated2/"
       - scripts/eval/make_test_audiocaps.sbatch

@@ -1,3 +1,12 @@
+import sys
+import os
+
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/diffusers/src')
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch')
+sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan')
+
+from distutils.command.config import config
 from pathlib import Path
 from typing import List
 from datetime import timedelta
@@ -21,6 +30,13 @@ from accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGr
 from accelerate.utils import dataclasses as accelerate_dataclasses
 import webdataset as wds
 import click
+
+import torchaudio
+
+from diffusers import AudioLDMPipeline
+from audioldm_eval import EvaluationHelper
+from meldataset import spectral_normalize_torch
+
 
 # constants
 
@@ -126,21 +142,27 @@ def get_example_data(dataloader, device, n=5):
     audio_melspectrograms = []
     text_embeddings = []
     captions = []
+    youtube_ids = []
 
     if n == 0:
         print("get_example_data n == 0. cant return any data")
         return []
 
     for batch_item in dataloader:
+        # print("batch_item", batch_item)
         print("get_example_data batch_item", batch_item.keys())
         print("youtube_id", batch_item['youtube_id'])
 
         audio_melspec = batch_item['audio_melspec']
         audio_emb = batch_item['audio_emb']
         txt = batch_item['txt']
+        youtube_ids = batch_item['youtube_id']
 
-        if len(batch_item['txt']) == 0:
+        if len(txt) == 0:
             print("no text found in dataloader for example data:", dataloader)
+
+        if len(youtube_ids) == 0:
+            print("no youtube_ids found in dataloader for example data:", dataloader)
 
         # print("audio_melspec", audio_melspec)
         # print("audio_emb", audio_emb)
@@ -165,23 +187,23 @@ def get_example_data(dataloader, device, n=5):
         audio_melspectrograms.extend(list(audio_melspec))
 
         # TODO fix crutch no txt data is passed for validation
-        if len(txt) == 0:
-            txt = [ '' ] * len(audio_melspec)
-
         captions.extend(list(txt))
+
+        youtube_ids.extend(youtube_ids)
+
         if len(audio_melspectrograms) >= n:
             break
 
     # print("audio_melspectrograms", len(audio_melspectrograms))
     # print("audio_embeddings", len(audio_embeddings))
-    return list(zip(audio_melspectrograms[:n], audio_embeddings[:n], text_embeddings[:n], captions[:n]))
+    return list(zip(audio_melspectrograms[:n], audio_embeddings[:n], text_embeddings[:n], captions[:n], youtube_ids[:n]))
 
 def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=False):
     """
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
     """
-    real_images, img_embeddings, text_embeddings, txts = zip(*example_data)
+    real_images, img_embeddings, text_embeddings, txts, youtube_ids = zip(*example_data)
     sample_params = {}
     if img_embeddings[0] is None:
         # Generate image embeddings from clip
@@ -220,30 +242,43 @@ def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_une
     if match_image_size:
         generated_image_size = generated_images[0].shape
         real_images = [resize_image_to(image, generated_image_size, clamp_range=(0, 1)) for image in real_images]
-    return real_images, generated_images, captions
+    return real_images, generated_images, captions, youtube_ids
 
 def generate_grid_samples(trainer, examples, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=""):
     """
     Generates samples and uses torchvision to put them in a side by side grid for easy viewing
     """
-    real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)
+    real_images, generated_images, captions, youtube_ids = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)
     grid_images = []
     for original_image, generated_image in zip(real_images, generated_images):
         grid_images.append(torchvision.utils.make_grid([original_image, generated_image]))
 
     return grid_images, captions
 
-def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=None, condition_on_text_encodings=False, cond_scale=1.0, inference_device=None, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
+def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, end_unet,
+                    clip=None,
+                    condition_on_text_encodings=False,
+                    cond_scale=1.0,
+                    inference_device=None,
+                    n_evaluation_samples=1000,
+                    data_path=None,
+                    AUDIOLDM_EVAL=None,
+                    FID=None,
+                    IS=None,
+                    KID=None,
+                    LPIPS=None):
     """
     Computes evaluation metrics for the decoder
     """
+    print("AUDIOLDM_EVAL", AUDIOLDM_EVAL)
+
     metrics = {}
     # Prepare the data
     examples = get_example_data(dataloader, device, n_evaluation_samples)
     if len(examples) == 0:
         print("No data to evaluate. Check that your dataloader has shards.")
         return metrics
-    real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)
+    real_images, generated_images, captions, youtube_ids = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)
     real_images = torch.stack(real_images).to(device=device, dtype=torch.float)
     generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)
     # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
@@ -267,6 +302,72 @@ def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=Non
         fid.update(int_real_images, real=True)
         fid.update(int_generated_images, real=False)
         metrics["FID"] = fid.compute().item()
+
+    if exists(AUDIOLDM_EVAL):
+
+        print("AUDIOLDM_EVAL", AUDIOLDM_EVAL)
+
+        audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
+        audioLDMpipe.to(device)
+
+        paired_dir = os.path.join(data_path, 'paired')
+        reference_dir = os.path.join(data_path, 'reference')
+
+        if os.path.isdir(paired_dir):
+            os.removedirs(paired_dir)
+
+        if os.path.isdir(reference_dir):
+            os.removedirs(reference_dir)
+
+        os.mkdir(paired_dir)
+        os.mkdir(reference_dir)
+
+        generated_images_normalized = spectral_normalize_torch(generated_images).detach()
+
+        generated_images_for_vocoder = generated_images_normalized.permute(0, 1, 3, 2)
+        assert generated_images_for_vocoder.shape[1:] == (1, 512, 64), f'vocoder shape is not ok {generated_images_for_vocoder.shape}'
+
+        generated_images_for_vocoder = generated_images_for_vocoder[:, 0, :, :]
+        waveforms = audioLDMpipe.vocoder(generated_images_for_vocoder).detach().cpu()
+        print("waveforms.shape", waveforms.shape)
+
+        reference_origin_dir = AUDIOLDM_EVAL['reference_origin_dir']
+
+        seen_youtube_ids = set()
+        for i, youtube_id, in zip(range(waveforms.shape[0]), youtube_ids):
+            assert i          is not None, f'i is none, youtube_id={youtube_id}'
+            assert youtube_id is not None, f'youtube_id is none, i={i}'
+
+            if youtube_id in seen_youtube_ids:
+                continue
+
+            seen_youtube_ids.add(youtube_id)
+
+            file_name = youtube_id + ".wav"
+
+            result_wav_file = os.path.join(paired_dir, file_name)
+
+            waveform = waveforms[i]
+            waveform = waveform.unsqueeze(0)
+            torchaudio.save( result_wav_file, waveform, 16000 )
+
+            target_wav_file = os.path.join(reference_dir, file_name)
+            reference_origin_path = os.path.join(reference_origin_dir, file_name)
+            os.symlink(reference_origin_path, target_wav_file)
+
+        evaluator = EvaluationHelper(AUDIOLDM_EVAL['sample_rate'], device)
+
+        # Perform evaluation, result will be print out and saved as json
+        metrics = evaluator.main(
+            paired_dir,
+            reference_dir,
+        )
+
+        metrics["frechet_distance"]       = metrics["frechet_distance"]
+        metrics["frechet_audio_distance"] = metrics["frechet_audio_distance"]
+        metrics["inception_score_mean"]   = metrics["inception_score_mean"]
+        metrics["inception_score_std"]    = metrics["inception_score_std"]
+
     if exists(IS):
         inception = InceptionScore(**IS, dist_sync_fn=null_sync)
         inception.to(device=device)
@@ -290,6 +391,7 @@ def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=Non
         lpips.to(device=device)
         lpips.update(renorm_real_images, renorm_generated_images)
         metrics["LPIPS"] = lpips.compute().item()
+
 
     if trainer.accelerator.num_processes > 1:
         # Then we should sync the metrics
@@ -522,7 +624,6 @@ def train(
             i = 0
             for i, batch_item in enumerate(trainer.val_loader):
 
-
                 audio_melspec = batch_item['audio_melspec']
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
@@ -602,7 +703,7 @@ def train(
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
                 print("trainer.val_loader", trainer.val_loader)
-                evaluation = evaluate_trainer(trainer, trainer.val_loader, inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
+                evaluation = evaluate_trainer(trainer, trainer.val_loader, inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale, data_path=tracker.data_path)
                 if is_master:
                     tracker.log(evaluation, step=step())
             next_task = 'sample'
