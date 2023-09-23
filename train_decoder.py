@@ -6,6 +6,7 @@ sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch')
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan')
 
+import warnings
 from distutils.command.config import config
 from pathlib import Path
 from typing import List
@@ -14,7 +15,7 @@ from datetime import timedelta
 from dalle2_pytorch.trainer import DecoderTrainer
 from dalle2_pytorch.dataloaders import create_audio_embedding_dataloader
 from dalle2_pytorch.trackers import Tracker
-from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig
+from dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig, DecoderEvaluateConfig, DecoderTrainConfig
 from dalle2_pytorch.utils import Timer, print_ribbon
 from dalle2_pytorch.dalle2_pytorch import Decoder, resize_image_to
 from clip import tokenize
@@ -32,10 +33,13 @@ import webdataset as wds
 import click
 
 import torchaudio
+import hashlib
+
 
 from diffusers import AudioLDMPipeline
 from audioldm_eval import EvaluationHelper
 from meldataset import spectral_normalize_torch
+import shutil
 
 
 # constants
@@ -150,8 +154,8 @@ def get_example_data(dataloader, device, n=5):
 
     for batch_item in dataloader:
         # print("batch_item", batch_item)
-        print("get_example_data batch_item", batch_item.keys())
-        print("youtube_id", batch_item['youtube_id'])
+        # print("get_example_data batch_item", batch_item.keys())
+        # print("youtube_id", batch_item['youtube_id'])
 
         audio_melspec = batch_item['audio_melspec']
         audio_emb = batch_item['audio_emb']
@@ -159,9 +163,11 @@ def get_example_data(dataloader, device, n=5):
         youtube_ids = batch_item['youtube_id']
 
         if len(txt) == 0:
+            # raise Exception("no text found in dataloader for example data:", dataloader)
             print("no text found in dataloader for example data:", dataloader)
 
         if len(youtube_ids) == 0:
+            # raise Exception("no youtube_ids found in dataloader for example data:", dataloader)
             print("no youtube_ids found in dataloader for example data:", dataloader)
 
         # print("audio_melspec", audio_melspec)
@@ -262,23 +268,31 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
                     inference_device=None,
                     n_evaluation_samples=1000,
                     data_path=None,
+                    random_generated_samples=False,
                     AUDIOLDM_EVAL=None,
                     FID=None,
                     IS=None,
                     KID=None,
-                    LPIPS=None):
+                    LPIPS=None,
+                    **kwargs,
+                    ):
     """
     Computes evaluation metrics for the decoder
     """
-    print("AUDIOLDM_EVAL", AUDIOLDM_EVAL)
-
     metrics = {}
     # Prepare the data
     examples = get_example_data(dataloader, device, n_evaluation_samples)
     if len(examples) == 0:
+        # raise Exception("No data to evaluate. Check that your dataloader has shards.")
         print("No data to evaluate. Check that your dataloader has shards.")
         return metrics
-    real_images, generated_images, captions, youtube_ids = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)
+
+    if random_generated_samples:
+        real_images, _, _, captions, youtube_ids = zip(*examples)
+        generated_images = [ torch.rand_like(real_images[0]) for _ in range(len(real_images)) ]
+    else:
+        real_images, generated_images, captions, youtube_ids = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)
+
     real_images = torch.stack(real_images).to(device=device, dtype=torch.float)
     generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)
     # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
@@ -290,8 +304,8 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
     if int_generated_images.shape[1] == 1:
         int_generated_images = int_generated_images.repeat(1, 3, 1, 1)
 
-    print("int_real_images", int_real_images)
-    print("int_generated_images", int_generated_images)
+    # print("int_real_images", int_real_images)
+    # print("int_generated_images", int_generated_images)
 
     def null_sync(t, *args, **kwargs):
         return [t]
@@ -306,6 +320,10 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
     if exists(AUDIOLDM_EVAL):
 
         print("AUDIOLDM_EVAL", AUDIOLDM_EVAL)
+        assert "sample_rate" in AUDIOLDM_EVAL
+        assert "vocoder_batch_size" in AUDIOLDM_EVAL
+        assert "audioldm_pipeline_name" in AUDIOLDM_EVAL
+        assert "reference_origin_dir" in AUDIOLDM_EVAL
 
         audioLDMpipe = AudioLDMPipeline.from_pretrained( "cvssp/audioldm-s-full-v2", local_files_only=True )
         audioLDMpipe.to(device)
@@ -314,10 +332,10 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
         reference_dir = os.path.join(data_path, 'reference')
 
         if os.path.isdir(paired_dir):
-            os.removedirs(paired_dir)
+            shutil.rmtree(paired_dir)
 
         if os.path.isdir(reference_dir):
-            os.removedirs(reference_dir)
+            shutil.rmtree(reference_dir)
 
         os.mkdir(paired_dir)
         os.mkdir(reference_dir)
@@ -327,11 +345,23 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
         generated_images_for_vocoder = generated_images_normalized.permute(0, 1, 3, 2)
         assert generated_images_for_vocoder.shape[1:] == (1, 512, 64), f'vocoder shape is not ok {generated_images_for_vocoder.shape}'
 
+        vocoder_batch_size = AUDIOLDM_EVAL['vocoder_batch_size']
         generated_images_for_vocoder = generated_images_for_vocoder[:, 0, :, :]
-        waveforms = audioLDMpipe.vocoder(generated_images_for_vocoder).detach().cpu()
-        print("waveforms.shape", waveforms.shape)
+
+        waveforms = []
+
+        for i in range(0, generated_images_for_vocoder.shape[0], vocoder_batch_size):
+            batch_end_i = min(i+vocoder_batch_size, generated_images_for_vocoder.shape[0])
+
+            generated_images_for_vocoder_batch = generated_images_for_vocoder[i:batch_end_i]
+            waveforms_batch = audioLDMpipe.vocoder(generated_images_for_vocoder_batch).detach().cpu()
+            print("waveforms_batch.shape", waveforms_batch.shape)
+            waveforms.append(waveforms_batch)
 
         reference_origin_dir = AUDIOLDM_EVAL['reference_origin_dir']
+
+        waveforms = torch.vstack(waveforms).detach().cpu()
+        print("waveforms stacked shape", waveforms.shape)
 
         seen_youtube_ids = set()
         for i, youtube_id, in zip(range(waveforms.shape[0]), youtube_ids):
@@ -342,6 +372,7 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
                 continue
 
             seen_youtube_ids.add(youtube_id)
+            print("seen_youtube_ids", seen_youtube_ids)
 
             file_name = youtube_id + ".wav"
 
@@ -353,20 +384,26 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
 
             target_wav_file = os.path.join(reference_dir, file_name)
             reference_origin_path = os.path.join(reference_origin_dir, file_name)
-            os.symlink(reference_origin_path, target_wav_file)
+
+            print(f"make symlink {reference_origin_path} -> {target_wav_file}:")
+            try:
+                os.symlink(reference_origin_path, target_wav_file)
+            except Exception as e:
+                print(f"error on symlink {reference_origin_path} -> {target_wav_file}:", e)
 
         evaluator = EvaluationHelper(AUDIOLDM_EVAL['sample_rate'], device)
 
         # Perform evaluation, result will be print out and saved as json
-        metrics = evaluator.main(
+        audioldm_metrics = evaluator.main(
             paired_dir,
             reference_dir,
+            recalculate=True,
         )
 
-        metrics["frechet_distance"]       = metrics["frechet_distance"]
-        metrics["frechet_audio_distance"] = metrics["frechet_audio_distance"]
-        metrics["inception_score_mean"]   = metrics["inception_score_mean"]
-        metrics["inception_score_std"]    = metrics["inception_score_std"]
+        metrics["frechet_distance"]       = audioldm_metrics["frechet_distance"]
+        metrics["frechet_audio_distance"] = audioldm_metrics["frechet_audio_distance"]
+        metrics["inception_score_mean"]   = audioldm_metrics["inception_score_mean"]
+        metrics["inception_score_std"]    = audioldm_metrics["inception_score_std"]
 
     if exists(IS):
         inception = InceptionScore(**IS, dist_sync_fn=null_sync)
@@ -405,6 +442,7 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
         metrics_tensor = metrics_tensor.mean(dim=0)
         for i, metric_name in enumerate(metrics_order):
             metrics[metric_name] = metrics_tensor[i].item()
+
     return metrics
 
 def save_trainer(tracker: Tracker, trainer: DecoderTrainer, epoch: int, sample: int, next_task: str, validation_losses: List[float], samples_seen: int, is_latest=True, is_best=False):
@@ -429,7 +467,7 @@ def train(
     tracker: Tracker,
     inference_device,
     clip=None,
-    evaluate_config=None,
+    evaluate_config: DecoderEvaluateConfig=None,
     epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch
     validation_samples = None,
     save_immediately=False,
@@ -439,6 +477,9 @@ def train(
     unet_training_mask=None,
     condition_on_text_encodings=False,
     cond_scale=1.0,
+    limit_train_batches=0,
+    limit_val_batches=0,
+    loop_train_dataloader_times=1,
     **kwargs
 ):
     """
@@ -513,14 +554,25 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for _ in range(5):
+            if loop_train_dataloader_times == 0:
+                warnings.warn('loop_train_dataloader_times is zero. no training will be performed')
+
+            for _ in range(loop_train_dataloader_times):
+                # break
                 for i, batch_item in enumerate(trainer.train_loader):
+
+                    if limit_train_batches > 0:
+                        if i > limit_train_batches:
+                            accelerator.print(f"Reached limit batches for training: limit_train_batches={limit_train_batches}")
+                            break
+
                     audio_melspec = batch_item['audio_melspec']
                     audio_emb = batch_item['audio_emb']
                     txt = batch_item['txt']
                     text_emb = batch_item.get('text_emb')
 
-                    print(f"train: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
+                    batch_id = hashlib.md5(" ".join(txt).encode(), usedforsecurity=False).hexdigest()
+                    print(f"train: process={accelerator.process_index} batch_idx={i}, batch_id={batch_id} len_items_in_batche={len(audio_melspec)}, limit_train_batches={limit_train_batches}")
 
                     # We want to count the total number of samples across all processes
                     sample_length_tensor[0] = len(audio_melspec)
@@ -623,12 +675,16 @@ def train(
 
             i = 0
             for i, batch_item in enumerate(trainer.val_loader):
+                if limit_val_batches > 0:
+                    if i > limit_val_batches:
+                        accelerator.print(f"Reached limit batches for validation: limit_val_batches={limit_val_batches}")
+                        break
 
                 audio_melspec = batch_item['audio_melspec']
                 audio_emb = batch_item['audio_emb']
                 txt = batch_item['txt']
                 text_emb = batch_item.get('text_emb')
-                print(f"validation step={i} txt len", len(txt))
+                print(f"validation step={i} txt len", len(txt), "limit_val_batches", limit_val_batches)
 
                 print(f"validation: process={accelerator.process_index} batch_idx={i} len_items_in_batche={len(audio_melspec)}")
 
@@ -703,9 +759,16 @@ def train(
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
                 print("trainer.val_loader", trainer.val_loader)
-                evaluation = evaluate_trainer(trainer, trainer.val_loader, inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale, data_path=tracker.data_path)
+
+                eval_dataloader = trainer.val_loader
+                if evaluate_config.use_train_dataloader_for_evaluate:
+                    eval_dataloader = trainer.train_loader
+
+                evaluation = evaluate_trainer(trainer, eval_dataloader, inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale, data_path=tracker.data_path)
                 if is_master:
-                    tracker.log(evaluation, step=step())
+                    eval_log_step = step()
+                    print("log evaluation step", eval_log_step, "metrics", evaluation)
+                    tracker.log(evaluation, step=eval_log_step)
             next_task = 'sample'
             val_sample = 0
 
@@ -748,7 +811,7 @@ def create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_
     tracker.save_config(config_path, config_name='decoder_config.json')
     tracker.add_save_metadata(state_dict_key='config', metadata=config.dict())
     return tracker
-    
+
 def initialize_training(config: TrainDecoderConfig, config_path):
     # Make sure if we are not loading, distributed models are initialized to the same values
     torch.manual_seed(config.seed)

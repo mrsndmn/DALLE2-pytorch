@@ -21,4 +21,4 @@ set -o xtrace
 
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file accelerate_configs/full_inference_config.yaml --main_process_port 29501 scripts/eval/make_test_audiocaps_audioldm.py
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file accelerate_configs/single_gpu_config.yaml --main_process_port 29501 scripts/eval/make_test_audiocaps_audioldm.py

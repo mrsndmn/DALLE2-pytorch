@@ -322,6 +322,9 @@ class DecoderTrainConfig(BaseModel):
     find_unused_parameters: bool = True
     static_graph: bool = True
     max_grad_norm: SingularOrIterable[float] = 0.5
+    limit_train_batches: int = 0 # 0 is unlimited
+    limit_val_batches:   int = 0 # 0 is unlimited
+    loop_train_dataloader_times: int = 1
     save_every_n_samples: int = 100000
     n_sample_images: int = 6                       # The number of example images to produce when sampling the train and test dataset
     cond_scale: Union[float, List[float]] = 1.0
@@ -336,6 +339,7 @@ class DecoderTrainConfig(BaseModel):
 
 class DecoderEvaluateConfig(BaseModel):
     n_evaluation_samples: int = 1000
+    use_train_dataloader_for_evaluate: bool = False
     FID: Dict[str, Any] = None
     IS: Dict[str, Any] = None
     KID: Dict[str, Any] = None

@@ -2,9 +2,9 @@
 #SBATCH --job-name="dec_f"
 #SBATCH --ntasks=1              # Количество MPI процессов
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
-#SBATCH --cpus-per-task=2       # Количество ядер CPU, выделенных для одного процесса
-#SBATCH --gpus-per-node=1       # Количество GPU на один узел
-#SBATCH -C type_a|type_b|type_c
+#SBATCH --cpus-per-task=3       # Количество ядер CPU, выделенных для одного процесса
+#SBATCH --gpus-per-node=1          # Количество GPU на один узел
+#SBATCH -C type_e|type_b|type_c
 #SBATCH --time-min=1400
 
 module purge

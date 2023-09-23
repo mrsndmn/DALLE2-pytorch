@@ -9,6 +9,8 @@ import shutil
 import random
 import warnings
 
+import pandas as pd
+
 def get_shard(filename):
     """
     Filenames with shards in them have a consistent structure that we can take advantage of
@@ -298,6 +300,7 @@ def create_audio_embedding_dataloader(
     )
 
     # print('ds[0]', next(iter(ds)))
+    # audiocaps_dataset = pd.read_csv('')
 
     if shuffle_num is not None and shuffle_num > 0:
         ds.shuffle(1000)
@@ -311,13 +314,16 @@ def create_audio_embedding_dataloader(
         # print("captions", [ x['txt'] for x in batch ])
         # print("youtube_id", [ x['youtube_id'] for x in batch ])
         # print("audio_melspec_stacked", audio_melspec_stacked[0, 0, :1, :10])
-
-        return {
+        result = {
             "audio_emb": torch.stack([ torch.tensor(x['audio_emb']) for x in batch ])[:, 0, :],
             "audio_melspec": audio_melspec_stacked,
+            # "txt": [],
+            # "youtube_id": [],
             "txt": [ x['txt'] for x in batch ],
-            "youtube_id": [ str(x['youtube_id']) for x in batch ],
+            "youtube_id": [ x['youtube_id'].decode('utf-8') for x in batch ],
         }
+        # print("result", result)
+        return result
 
     return DataLoader(
         ds,

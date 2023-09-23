@@ -59,12 +59,13 @@ assert config.evaluate.AUDIOLDM_EVAL is not None
 
 evaluate_trainer(
     trainer,
-    dataloaders['val'],
+    trainer.val_loader,
     device,
     0,
     len(config.train.unet_training_mask),
     clip=None,
     inference_device=device,
+    random_generated_samples=True,
     **config.evaluate.dict(),
     condition_on_text_encodings=False,
     data_path=config.tracker.data_path

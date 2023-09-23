@@ -452,7 +452,7 @@ class DecoderTrainer(nn.Module):
         ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
 
         assert accelerator is not None, "accelerator is required for decoder trainer"
-        self.accelerator = accelerator
+        self.accelerator: Accelerator = accelerator
 
         self.num_unets = len(decoder.unets)
 
@@ -522,7 +522,7 @@ class DecoderTrainer(nn.Module):
 
         decoder, *optimizers = list(self.accelerator.prepare(decoder, *optimizers))
 
-        self.decoder = decoder
+        self.decoder: Decoder = decoder
 
         # prepare dataloaders
 
