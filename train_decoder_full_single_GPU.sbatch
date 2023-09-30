@@ -2,9 +2,9 @@
 #SBATCH --job-name="dec_f"
 #SBATCH --ntasks=1              # Количество MPI процессов
 #SBATCH --ntasks-per-node=1     # Количество процессов на один узел
-#SBATCH --cpus-per-task=3       # Количество ядер CPU, выделенных для одного процесса
+#SBATCH --cpus-per-task=4       # Количество ядер CPU, выделенных для одного процесса
 #SBATCH --gpus-per-node=1          # Количество GPU на один узел
-#SBATCH -C type_e|type_b|type_c
+#SBATCH -C type_e
 #SBATCH --time-min=1400
 
 module purge
@@ -21,4 +21,4 @@ set -o xtrace
 
 export PYTHONPATH=/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch
 
-srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file accelerate_configs/single_gpu_config.yaml --main_process_port 29501 train_decoder.py $@
+srun /home/dtarasov/.conda/envs/audio_dalle2/bin/accelerate launch --config_file accelerate_configs/single_gpu_config.yaml train_decoder.py $@

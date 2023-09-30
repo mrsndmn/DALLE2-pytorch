@@ -587,12 +587,46 @@ class DecoderTrainer(nn.Module):
 
         self.accelerator.save(save_obj, str(path))
 
-    def load_state_dict(self, loaded_obj, only_model = False, strict = True):
+    def load_state_dict(self, loaded_obj: dict, only_model = False, strict = True, only_unet_index=None):
         if version.parse(__version__) != version.parse(loaded_obj['version']):
             self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {__version__}')
 
-        self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
-        self.steps.copy_(loaded_obj['steps'])
+        if only_unet_index is None:
+            self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
+        else:
+            loaded_unet_model_at_index = {}
+
+            unet_key = 'unets.' + str(only_unet_index) + '.'
+            for k, v in loaded_obj['model'].items():
+                if not k.startswith(unet_key):
+                    print("continue", k, unet_key)
+                    continue
+
+                k = k[len(unet_key):]
+                print("use key", k)
+                loaded_unet_model_at_index[k] = v
+
+            print("only_unet_index", only_unet_index, "loaded_unet_model_at_index", loaded_unet_model_at_index.keys())
+
+            self.accelerator.unwrap_model(self.decoder.unets[only_unet_index]).load_state_dict(loaded_unet_model_at_index, strict = strict)
+
+            loaded_noise_schedulers_model_at_index = {}
+
+            noise_scheduler_key = 'noise_schedulers.' + str(only_unet_index) + '.'
+            for k, v in loaded_obj['model'].items():
+                if not k.startswith(noise_scheduler_key):
+                    continue
+
+                k = k[len(noise_scheduler_key):]
+                print("use key", k)
+                loaded_noise_schedulers_model_at_index[k] = v
+
+            print("only_unet_index", only_unet_index, "loaded_noise_schedulers_model_at_index", loaded_noise_schedulers_model_at_index.keys())
+
+            self.accelerator.unwrap_model(self.decoder.noise_schedulers[only_unet_index]).load_state_dict(loaded_noise_schedulers_model_at_index, strict = strict)
+
+        if 'steps' in loaded_obj:
+            self.steps.copy_(loaded_obj['steps'])
 
         if only_model:
             return loaded_obj

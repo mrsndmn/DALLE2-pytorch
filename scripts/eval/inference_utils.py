@@ -14,17 +14,23 @@ def save_melspec(audioLDMpipe, base_path_prefix, melspec_t, input_text, file_pre
 
     plt.title(melspec_type + " melspec: " + input_text)
     plt.imshow(mepspec[0, :, :])
-    plt.savefig(base_path_prefix + "/melspec_" + melspec_type  + "_" + file_prefix + ".png")
+
+    melspec_path = base_path_prefix + "/melspec_" + melspec_type  + "_" + file_prefix + ".png"
+    plt.savefig(melspec_path)
     plt.clf()
+    print("melspec_path", melspec_path)
 
-    generated_image_for_vocoder = melspec_t.permute(0, 2, 1)
-    assert generated_image_for_vocoder.shape == (1, 512, 64), f'vocoder shape is not ok {generated_image_for_vocoder.shape}'
+    try:
+        generated_image_for_vocoder = melspec_t.permute(0, 2, 1)
+        assert generated_image_for_vocoder.shape == (1, 512, 64), f'vocoder shape is not ok {generated_image_for_vocoder.shape}'
 
-    sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
+        sample_waveform = audioLDMpipe.vocoder(generated_image_for_vocoder).detach().cpu()
 
-    result_wav_file = base_path_prefix + "/" + melspec_type + file_prefix + ".wav"
-    torchaudio.save( result_wav_file, sample_waveform, 16000 )
-    print("saved wav:", result_wav_file)
+        result_wav_file = base_path_prefix + "/" + melspec_type + file_prefix + ".wav"
+        torchaudio.save( result_wav_file, sample_waveform, 16000 )
+        print("saved wav:", result_wav_file)
+    except Exception as e:
+        print("cant save melspec:", e)
 
     return
 

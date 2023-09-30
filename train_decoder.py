@@ -204,7 +204,7 @@ def get_example_data(dataloader, device, n=5):
     # print("audio_embeddings", len(audio_embeddings))
     return list(zip(audio_melspectrograms[:n], audio_embeddings[:n], text_embeddings[:n], captions[:n], youtube_ids[:n]))
 
-def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=False):
+def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=True):
     """
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
@@ -247,7 +247,7 @@ def generate_samples(trainer: DecoderTrainer, example_data, clip=None, start_une
     captions = [text_prepend + txt for txt in txts]
     if match_image_size:
         generated_image_size = generated_images[0].shape
-        real_images = [resize_image_to(image, generated_image_size, clamp_range=(0, 1)) for image in real_images]
+        real_images = [resize_image_to(image, generated_image_size) for image in real_images]
     return real_images, generated_images, captions, youtube_ids
 
 def generate_grid_samples(trainer, examples, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=""):
@@ -343,6 +343,11 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
         generated_images_normalized = spectral_normalize_torch(generated_images).detach()
 
         generated_images_for_vocoder = generated_images_normalized.permute(0, 1, 3, 2)
+        if generated_images_for_vocoder.shape[1:] != (1, 512, 64):
+            print("resizing image for vocoder")
+            generated_images_for_vocoder = resize_image_to(generated_images_for_vocoder, (512, 64,))
+
+        print("generated_images_for_vocoder.shape", generated_images_for_vocoder.shape)
         assert generated_images_for_vocoder.shape[1:] == (1, 512, 64), f'vocoder shape is not ok {generated_images_for_vocoder.shape}'
 
         vocoder_batch_size = AUDIOLDM_EVAL['vocoder_batch_size']
@@ -372,7 +377,7 @@ def evaluate_trainer(trainer: DecoderTrainer, dataloader, device, start_unet, en
                 continue
 
             seen_youtube_ids.add(youtube_id)
-            print("seen_youtube_ids", seen_youtube_ids)
+            # print("seen_youtube_ids", seen_youtube_ids)
 
             file_name = youtube_id + ".wav"
 

@@ -17,6 +17,8 @@ sys.path.insert(0, "/home/dtarasov/workspace/hse-audio-dalle2/DALLE2-pytorch")
 sys.path.insert(0, "/home/dtarasov/workspace/hse-audio-dalle2/hifi-gan")
 sys.path.insert(0, '/home/dtarasov/workspace/hse-audio-dalle2/transformers/src')
 
+# from transformers import spectrogram
+
 from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist
 
 import numpy as np

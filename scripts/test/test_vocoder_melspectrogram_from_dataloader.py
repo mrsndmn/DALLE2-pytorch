@@ -15,7 +15,7 @@ from train_decoder import create_dataloaders, TrainDecoderConfig
 from train_decoder import create_dataloaders, get_example_data
 
 
-config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full.json')
+config = TrainDecoderConfig.from_json_path('configs/train_decoder_config.audio.full_no_prior_A100_u2.json')
 all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))
 
 dataloaders = create_dataloaders(
@@ -36,7 +36,7 @@ dataloader = dataloaders['train']
 batch = next(iter(dataloader))
 
 device = 'cpu'
-examples = get_example_data(dataloader, device, 10)
+examples = get_example_data(dataloader, device, 100)
 
 i = 0
 for melspectrogarm, img_embeddings, text_embeddings, input_text, youtube_id in examples:

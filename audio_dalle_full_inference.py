@@ -33,6 +33,9 @@ def make_inference_config(decoder_config_path: str):
     with open(decoder_config_path, 'r') as f:
         decoder_config = json.load(f)
 
+    if 'inference' in decoder_config_path:
+        raise Exception("audio_dalle_full_inference.py accepts training config and build inference config by itself. Your config file must not contain `inference` word")
+
     decoder_config['tracker']['log']['wandb_project'] = decoder_config['tracker']['log']['wandb_project'] + '_inference'
 
     inference_datapath = decoder_config['tracker']['data_path'] + '_inference'
@@ -55,6 +58,10 @@ def make_inference_config(decoder_config_path: str):
         json.dump(decoder_config, f, indent=4)
 
     return decoder_config, decoder_inference_config_path
+
+
+def dynamic_range_compression_torch(x, C=1, clip_val=1e-5, normalize_fn=torch.log):
+    return normalize_fn(torch.clamp(x, min=clip_val) * C)
 
 
 def audio_dalle2_full_inference(
@@ -126,6 +133,7 @@ def audio_dalle2_full_inference(
         accelerator=accelerator,
     )
     trainer.to(device)
+    trainer.eval()
 
     if tracker.can_recall:
         recall_trainer(tracker, trainer)
@@ -138,7 +146,7 @@ def audio_dalle2_full_inference(
 
     examples = []
     for i in range(audio_embedds_normalized.shape[0]):
-        examples.append([ torch.rand([ 1, 64, 512 ]).to(device), audio_embedds_normalized[i, :].to(device), None, input_texts[i] ],)
+        examples.append([ torch.rand([ 1, 64, 512 ]).to(device), audio_embedds_normalized[i, :].to(device), None, input_texts[i], str(i) ],)
 
     real_images, generated_images, captions, youtube_ids = generate_samples(trainer, examples, device=device, match_image_size=False)
 
@@ -152,9 +160,16 @@ def audio_dalle2_full_inference(
         generated_image = generated_images[i]
         real_image =real_images[i]
 
-        gen_melspec_t = spectral_normalize_torch(generated_image).detach()
+        gen_melspec_t = generated_image.detach()
 
-        save_melspec(audioLDMpipe, generated_output_dir, gen_melspec_t, input_text, melspec_type="gen", file_prefix=file_id)
+        save_melspec(audioLDMpipe, generated_output_dir, gen_melspec_t, input_text, melspec_type="gen_raw", file_prefix=file_id)
+
+        gen_melspec_t = dynamic_range_compression_torch(generated_image, normalize_fn=torch.log10).detach()
+        save_melspec(audioLDMpipe, generated_output_dir, gen_melspec_t, input_text, melspec_type="gen_log10", file_prefix=file_id)
+
+        gen_melspec_t = dynamic_range_compression_torch(generated_image, normalize_fn=torch.log).detach()
+
+        save_melspec(audioLDMpipe, generated_output_dir, gen_melspec_t, input_text, melspec_type="gen_log", file_prefix=file_id)
 
     print("done")
 
@@ -166,7 +181,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    config = args.config
+    config = args.config_file
 
     input_data = [
         {"id": "0", "caption": "A duck quacks multiple times"},
