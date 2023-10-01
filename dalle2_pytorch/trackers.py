@@ -468,7 +468,7 @@ class Tracker:
             if self.loader is not None:
                 self.loader.init(self.logger)
             return
-        assert len(self.savers) > 0, '`savers` must be set before `init` is called'
+        # assert len(self.savers) > 0, '`savers` must be set before `init` is called'
 
         self.logger.init(full_config, extra_config)
         if self.loader is not None:

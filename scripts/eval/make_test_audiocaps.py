@@ -8,19 +8,21 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument( "--config_file", type=str, required=True, help="Path to decoder conifg" )
+parser.add_argument( "--config_files", type=str, required=True, help="Path to decoder conifg" )
 
 parser.add_argument( "--limit_samples", type=str, required=False, help="Generated samples limit", default=500 )
 
 args = parser.parse_args()
 
-decoder_config_path = args.config_file
+decoder_configs_path = args.config_files.split(",")
 limit_samples = args.limit_samples
 
 csv_path = "../audiocaps/dataset/test.csv"
 dataset = pd.read_csv(csv_path)
 
 data_dir = '../data/audiocaps_test'
+
+output_dir = '.decoder_test_inference'
 
 audio_dir_files = set(os.listdir(data_dir))
 
@@ -49,9 +51,17 @@ for _, x in dataset.iterrows():
         limit_samples -= 1
 
         if len(batch) >= MAX_BATCH_SIZE:
-            audio_dalle2_full_inference(batch, decoder_config_path=decoder_config_path)
+            audio_dalle2_full_inference(
+                batch,
+                decoder_configs_path=decoder_configs_path,
+                inference_out_base_path=output_dir,
+            )
             batch = []
 
 if len(batch) > 0:
-    audio_dalle2_full_inference(batch, decoder_config_path=decoder_config_path)
+    audio_dalle2_full_inference(
+        batch,
+        decoder_configs_path=decoder_configs_path,
+        inference_out_base_path=output_dir,
+    )
 

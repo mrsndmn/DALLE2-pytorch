@@ -456,13 +456,13 @@ def save_trainer(tracker: Tracker, trainer: DecoderTrainer, epoch: int, sample: 
     """
     tracker.save(trainer, is_best=is_best, is_latest=is_latest, epoch=epoch, sample=sample, next_task=next_task, validation_losses=validation_losses, samples_seen=samples_seen)
     
-def recall_trainer(tracker: Tracker, trainer: DecoderTrainer):
+def recall_trainer(tracker: Tracker, trainer: DecoderTrainer, strict=False):
     """
     Loads the model with an appropriate method depending on the tracker
     """
     trainer.accelerator.print(print_ribbon(f"Loading model from {type(tracker.loader).__name__}"))
     state_dict = tracker.recall()
-    trainer.load_state_dict(state_dict, only_model=False, strict=False)
+    trainer.load_state_dict(state_dict, only_model=False, strict=strict)
     return state_dict.get("epoch", 0), state_dict.get("validation_losses", []), state_dict.get("next_task", "train"), state_dict.get("sample", 0), state_dict.get("samples_seen", 0)
 
 def train(
