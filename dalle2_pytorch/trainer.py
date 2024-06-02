@@ -451,7 +451,8 @@ class DecoderTrainer(nn.Module):
         assert isinstance(decoder, Decoder)
         ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
 
-        self.accelerator = default(accelerator, Accelerator)
+        assert accelerator is not None, "accelerator is required for decoder trainer"
+        self.accelerator: Accelerator = accelerator
 
         self.num_unets = len(decoder.unets)
 
@@ -521,7 +522,7 @@ class DecoderTrainer(nn.Module):
 
         decoder, *optimizers = list(self.accelerator.prepare(decoder, *optimizers))
 
-        self.decoder = decoder
+        self.decoder: Decoder = decoder
 
         # prepare dataloaders
 
@@ -586,12 +587,46 @@ class DecoderTrainer(nn.Module):
 
         self.accelerator.save(save_obj, str(path))
 
-    def load_state_dict(self, loaded_obj, only_model = False, strict = True):
+    def load_state_dict(self, loaded_obj: dict, only_model = False, strict = True, only_unet_index=None):
         if version.parse(__version__) != version.parse(loaded_obj['version']):
             self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {__version__}')
 
-        self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
-        self.steps.copy_(loaded_obj['steps'])
+        if only_unet_index is None:
+            self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
+        else:
+            loaded_unet_model_at_index = {}
+
+            unet_key = 'unets.' + str(only_unet_index) + '.'
+            for k, v in loaded_obj['model'].items():
+                if not k.startswith(unet_key):
+                    print("continue", k, unet_key)
+                    continue
+
+                k = k[len(unet_key):]
+                print("use key", k)
+                loaded_unet_model_at_index[k] = v
+
+            print("only_unet_index", only_unet_index, "loaded_unet_model_at_index", loaded_unet_model_at_index.keys())
+
+            self.accelerator.unwrap_model(self.decoder.unets[only_unet_index]).load_state_dict(loaded_unet_model_at_index, strict = strict)
+
+            loaded_noise_schedulers_model_at_index = {}
+
+            noise_scheduler_key = 'noise_schedulers.' + str(only_unet_index) + '.'
+            for k, v in loaded_obj['model'].items():
+                if not k.startswith(noise_scheduler_key):
+                    continue
+
+                k = k[len(noise_scheduler_key):]
+                print("use key", k)
+                loaded_noise_schedulers_model_at_index[k] = v
+
+            print("only_unet_index", only_unet_index, "loaded_noise_schedulers_model_at_index", loaded_noise_schedulers_model_at_index.keys())
+
+            self.accelerator.unwrap_model(self.decoder.noise_schedulers[only_unet_index]).load_state_dict(loaded_noise_schedulers_model_at_index, strict = strict)
+
+        if 'steps' in loaded_obj:
+            self.steps.copy_(loaded_obj['steps'])
 
         if only_model:
             return loaded_obj
@@ -606,10 +641,10 @@ class DecoderTrainer(nn.Module):
 
             warmup_scheduler = self.warmup_schedulers[ind]
 
-            if exists(optimizer):
+            if exists(optimizer) and loaded_obj[optimizer_key] is not None:
                 optimizer.load_state_dict(loaded_obj[optimizer_key])
 
-            if exists(scheduler):
+            if exists(scheduler) and loaded_obj[scheduler_key] is not None:
                 scheduler.load_state_dict(loaded_obj[scheduler_key])
 
             if exists(warmup_scheduler):
@@ -669,20 +704,20 @@ class DecoderTrainer(nn.Module):
     @decoder_sample_in_chunks
     def sample(self, *args, **kwargs):
         distributed = self.accelerator.num_processes > 1
-        base_decoder = self.accelerator.unwrap_model(self.decoder)
+        base_decoder: Decoder = self.accelerator.unwrap_model(self.decoder)
 
         was_training = base_decoder.training
         base_decoder.eval()
 
         if kwargs.pop('use_non_ema', False) or not self.use_ema:
-            out = base_decoder.sample(*args, **kwargs, distributed = distributed)
+            out = base_decoder.sample(*args, **kwargs, one_unet_in_gpu_at_time = not distributed)
             base_decoder.train(was_training)
             return out
 
         trainable_unets = self.accelerator.unwrap_model(self.decoder).unets
         base_decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling
 
-        output = base_decoder.sample(*args, **kwargs, distributed = distributed)
+        output = base_decoder.sample(*args, **kwargs, one_unet_in_gpu_at_time = not distributed)
 
         base_decoder.unets = trainable_unets             # restore original training unets
 

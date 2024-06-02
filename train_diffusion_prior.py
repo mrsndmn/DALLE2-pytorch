@@ -472,7 +472,7 @@ def train(
 
             # pass to model
 
-            loss = trainer(text=txt, image_embed=img)
+            loss = trainer(text_embed=txt, image_embed=img)
 
             # perform backprop & apply EMA updates
 
@@ -697,8 +697,9 @@ def initialize_training(config_file, accelerator):
         click.secho("Grabbing data...", fg="blue", blink=True)
 
     trainer.accelerator.wait_for_everyone()
-    img_reader = get_reader(
+    img_reader, txt_reader = get_reader(
         text_conditioned=trainer.text_conditioned,
+        txt_url=config.data.txt_url,
         img_url=config.data.image_url,
         meta_url=config.data.meta_url,
     )
@@ -714,6 +715,7 @@ def initialize_training(config_file, accelerator):
         train_split=config.data.splits.train,
         eval_split=config.data.splits.val,
         image_reader=img_reader,
+        text_reader=txt_reader,
         rank=accelerator.state.process_index,
         world_size=accelerator.state.num_processes,
         start=0,
@@ -760,7 +762,7 @@ def initialize_training(config_file, accelerator):
 @click.option("--config_file", default="configs/train_prior_config.example.json")
 def main(config_file):
     # start HFA
-    accelerator = Accelerator()
+    accelerator = Accelerator(device_placement=False)
 
     # setup training
     initialize_training(config_file, accelerator)

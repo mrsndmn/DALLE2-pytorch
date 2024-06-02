@@ -1,3 +1,11 @@
+
+```
+vim configs/train_clap_prior_config.json
+~/anaconda3_new/envs/riffusion/bin/python make_audio_embeddings.py
+~/anaconda3_new/envs/riffusion/bin/python train_diffusion_prior.py --config_file configs/train_clap_prior_config.json
+```
+
+
 <img src="./dalle2.png" width="450px"></img>
 
 ## DALL-E 2 - Pytorch

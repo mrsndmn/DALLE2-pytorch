@@ -1,5 +1,11 @@
 # default experiment tracker data
 .tracker-data/
+.audioldm*
+.audioldm
+.test_voceder/
+*.wav
+*.npy
+ckpt
 
 # Configuration Files
 configs/*
@@ -119,6 +125,8 @@ ENV/
 env.bak/
 venv.bak/
 
+.decoder*
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -138,3 +146,8 @@ dmypy.json
 .pyre/
 .tracker_data
 *.pth
+.prior
+
+
+slurm*
+wandb/

@@ -231,6 +231,7 @@ class LocalLoader(BaseLoader):
 
     def recall(self) -> dict:
         # Load the file
+        print("loading checkpoint from", str(self.file_path))
         return torch.load(str(self.file_path), map_location='cpu')
 
 class WandbLoader(BaseLoader):
@@ -270,6 +271,11 @@ def create_loader(loader_type: str, data_path: str, **kwargs) -> BaseLoader:
         loader_class = loader_type_map[loader_type]
     except KeyError:
         raise ValueError(f'Unknown loader type: {loader_type}. Must be one of {list(loader_type_map.keys())}')
+
+    # checkpoint_path = ".decoder_u0_trained_26.06.23/latest_checkpoint.pth" # CHANGE EVERYWHERE HARDCODE PROBLEM ATTENTION
+
+    print("loader_class", loader_class)
+    print("data_path", data_path, "kwargs", kwargs)
     return loader_class(data_path, **kwargs)
 
 class BaseSaver:
@@ -462,7 +468,7 @@ class Tracker:
             if self.loader is not None:
                 self.loader.init(self.logger)
             return
-        assert len(self.savers) > 0, '`savers` must be set before `init` is called'
+        # assert len(self.savers) > 0, '`savers` must be set before `init` is called'
 
         self.logger.init(full_config, extra_config)
         if self.loader is not None:

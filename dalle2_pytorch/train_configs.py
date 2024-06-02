@@ -2,6 +2,7 @@ import json
 from torchvision import transforms as T
 from pydantic import BaseModel, validator, root_validator
 from typing import List, Optional, Union, Tuple, Dict, Any, TypeVar
+import torch
 
 from x_clip import CLIP as XCLIP
 from open_clip import list_pretrained
@@ -9,6 +10,7 @@ from coca_pytorch import CoCa
 
 from dalle2_pytorch.dalle2_pytorch import (
     CoCaAdapter,
+    ClapAdapter,
     OpenAIClipAdapter,
     OpenClipAdapter,
     Unet,
@@ -119,6 +121,8 @@ class AdapterConfig(BaseModel):
     def create(self):
         if self.make == "openai":
             return OpenAIClipAdapter(self.model)
+        elif self.make == "clap":
+            return ClapAdapter(self.model)
         elif self.make == "open_clip":
             pretrained = dict(list_pretrained())
             checkpoint = pretrained[self.model]
@@ -204,6 +208,7 @@ class DiffusionPriorTrainConfig(BaseModel):
 
 class DiffusionPriorDataConfig(BaseModel):
     image_url: str                   # path to embeddings folder
+    txt_url: str                     # path to text embeddings folder
     meta_url: str                    # path to metadata (captions) for images
     splits: TrainSplitConfig         # define train, validation, test splits for your dataset
     batch_size: int                  # per-gpu batch size used to train the model
@@ -242,8 +247,8 @@ class UnetConfig(BaseModel):
 
 class DecoderConfig(BaseModel):
     unets: ListOrTuple[UnetConfig]
-    image_size: int = None
-    image_sizes: ListOrTuple[int] = None
+    # image_size: int = None
+    image_sizes: ListOrTuple[ListOrTuple[int]] = None
     clip: Optional[AdapterConfig]   # The clip model to use if embeddings are not provided
     channels: int = 3
     timesteps: int = 1000
@@ -253,6 +258,7 @@ class DecoderConfig(BaseModel):
     learned_variance: SingularOrIterable[bool] = True
     image_cond_drop_prob: float = 0.1
     text_cond_drop_prob: float = 0.5
+    # unconditional: bool = False # todo
 
     def create(self):
         decoder_kwargs = self.dict()
@@ -278,21 +284,22 @@ class DecoderConfig(BaseModel):
 
 class DecoderDataConfig(BaseModel):
     webdataset_base_url: str               # path to a webdataset with jpg images
-    img_embeddings_url: Optional[str]      # path to .npy files with embeddings
-    text_embeddings_url: Optional[str]     # path to .npy files with embeddings
+    audio_embeddings_url: Optional[str]      # path to .npy files with embeddings
+    audio_melspectrogram_url: Optional[str]     # path to .npy files with embeddings
     num_workers: int = 4
     batch_size: int = 64
     start_shard: int = 0
     end_shard: int = 9999999
     shard_width: int = 6
     index_width: int = 4
+    hack_audio_embeddings: bool = False
     splits: TrainSplitConfig
     shuffle_train: bool = True
     resample_train: bool = False
     preprocessing: Dict[str, Any] = {'ToTensor': True}
 
     @property
-    def img_preproc(self):
+    def audio_preproc(self):
         def _get_transformation(transformation_name, **kwargs):
             if transformation_name == "RandomResizedCrop":
                 return T.RandomResizedCrop(**kwargs)
@@ -315,6 +322,9 @@ class DecoderTrainConfig(BaseModel):
     find_unused_parameters: bool = True
     static_graph: bool = True
     max_grad_norm: SingularOrIterable[float] = 0.5
+    limit_train_batches: int = 0 # 0 is unlimited
+    limit_val_batches:   int = 0 # 0 is unlimited
+    loop_train_dataloader_times: int = 1
     save_every_n_samples: int = 100000
     n_sample_images: int = 6                       # The number of example images to produce when sampling the train and test dataset
     cond_scale: Union[float, List[float]] = 1.0
@@ -329,10 +339,12 @@ class DecoderTrainConfig(BaseModel):
 
 class DecoderEvaluateConfig(BaseModel):
     n_evaluation_samples: int = 1000
+    use_train_dataloader_for_evaluate: bool = False
     FID: Dict[str, Any] = None
     IS: Dict[str, Any] = None
     KID: Dict[str, Any] = None
     LPIPS: Dict[str, Any] = None
+    AUDIOLDM_EVAL: Dict[str, Any] = None
 
 class TrainDecoderConfig(BaseModel):
     decoder: DecoderConfig
@@ -359,8 +371,8 @@ class TrainDecoderConfig(BaseModel):
 
         using_text_embeddings = any([unet.cond_on_text_encodings for unet in decoder_config.unets])
         using_clip = exists(decoder_config.clip)
-        img_emb_url = data_config.img_embeddings_url
-        text_emb_url = data_config.text_embeddings_url
+        audio_emb_url = data_config.audio_embeddings_url
+        text_emb_url = None # data_config.text_embeddings_url
 
         if using_text_embeddings:
             # Then we need some way to get the embeddings
@@ -368,9 +380,9 @@ class TrainDecoderConfig(BaseModel):
 
         if using_clip:
             if using_text_embeddings:
-                assert not exists(text_emb_url) or not exists(img_emb_url), 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'
+                assert not exists(text_emb_url) or not exists(audio_emb_url), 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'
             else:
-                assert not exists(img_emb_url), 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
+                assert not exists(audio_emb_url), 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
 
         if text_emb_url:
             assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason."

@@ -1,0 +1,70 @@
+stages:
+  # prior data
+  prior_prepare_dataset:
+    cmd: sbatch --wait --output prior_prepare_dataset.log make_audio_embeddings_for_prior.sbatch
+    deps:
+      - make_audio_embeddings_for_prior.sbatch
+      - make_audio_embeddings_for_prior.py
+    # ../audiocaps/dataset/train.csv
+    # audio_path = "../data/audiocaps_train/"
+
+    # outs:
+    # - ../data/audiocaps_prior_train_embeddings/
+
+  # prior
+  prior_train:
+    cmd: sbatch --wait --output prior_train.log train_prior.sbatch
+    deps:
+      - train_prior.sbatch
+      - train_diffusion_prior.py
+    # ../data/audiocaps_prior_train_embeddings/
+    params:
+      - configs/train_clap_prior_config.json:
+    outs:
+      - .prior
+
+  # decoder data
+  # decoder_prepare_dataset:
+  #   cmd: sbatch --wait --output decoder_prepare_dataset.log decoder_prepare_dataset.sbatch
+  #   deps:
+  #   - decoder_prepare_dataset.sbatch
+  #   - decoder_prepare_dataset.py
+  #   # ../audiocaps/dataset/train.csv
+  #   # audio_dir = "../data/audiocaps_train/"
+
+  #   outs:
+  #   - "../data/audiocaps_train_embeddings/webdataset_regenerated2/"
+
+  # decoder
+  decoder_no_prior:
+    cmd:
+      - sbatch --wait --output decoder_no_prior.log
+          train_decoder_full.sbatch
+          --config_file configs/train_decoder_config.audio.full_no_prior.json
+    deps:
+      - "../data/audiocaps_train_embeddings/webdataset_regenerated2/"
+      - train_decoder_full.sbatch
+    # ../audiocaps/dataset/train.csv
+    # audio_dir = "../data/audiocaps_train/"
+    params:
+      - configs/train_decoder_config.audio.full_no_prior.json:
+    outs:
+      - .decoder_full_no_prior/
+
+  decoder_no_prior_eval:
+    cmd:
+      - sbatch --wait
+          --output eval_make_test_audiocaps.log
+          scripts/eval/make_test_audiocaps.sbatch
+          --config_file configs/train_decoder_config.audio.full_no_prior.json
+    deps:
+      - "../data/audiocaps_train_embeddings/webdataset_regenerated2/"
+      - scripts/eval/make_test_audiocaps.sbatch
+    # ../audiocaps/dataset/train.csv
+    # audio_dir = "../data/audiocaps_train/"
+    # todo prior
+    params:
+      - configs/train_decoder_config.audio.full_no_prior.json:
+
+    outs:
+      - .decoder_full_no_prior_inference/

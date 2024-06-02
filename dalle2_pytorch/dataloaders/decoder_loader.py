@@ -1,3 +1,4 @@
+from logging import warning
 import os
 import webdataset as wds
 import torch
@@ -5,6 +6,10 @@ from torch.utils.data import DataLoader
 import numpy as np
 import fsspec
 import shutil
+import random
+import warnings
+
+import pandas as pd
 
 def get_shard(filename):
     """
@@ -51,7 +56,7 @@ def embedding_inserter(samples, embeddings_url, index_width, sample_key='npy', h
                 # This means if we shuffle before inserting it will load many more files than we expect and be very inefficient.
                 previous_tar_url = tar_url
                 current_embeddings = load_corresponding_embeds(tar_url)
-                
+
             embedding_index = int(key[-index_width:])
             embedding = current_embeddings[embedding_index]
             # We need to check if this sample is nonzero. If it is, this embedding is not valid and we should continue to the next loop
@@ -87,6 +92,7 @@ def unassociated_shard_skipper(tarfiles, embeddings_url, handler=wds.handlers.re
                 break
 skip_unassociated_shards = wds.filters.pipelinefilter(unassociated_shard_skipper)
 
+
 def join_embeddings(samples, handler=wds.handlers.reraise_exception):
     """
     Takes the img_emb and text_emb keys and turns them into one key "emb": { "text": text_emb, "img": img_emb }
@@ -94,11 +100,13 @@ def join_embeddings(samples, handler=wds.handlers.reraise_exception):
     """
     for sample in samples:
         try:
-            sample['emb'] = {}
             if 'text_emb' in sample:
                 sample['emb']['text'] = sample['text_emb']
             if 'img_emb' in sample:
                 sample['emb']['img'] = sample['img_emb']
+            if 'audio_emb' in sample:
+                sample['emb']['audio'] = sample.pop('audio_emb')
+
             yield sample
         except Exception as exn:  # From wds implementation
             if handler(exn):
@@ -106,12 +114,38 @@ def join_embeddings(samples, handler=wds.handlers.reraise_exception):
             else:
                 break
 
-def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
+def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception, hack_audio_embeddings=False):
     """
     Requires that both the image and embedding are present in the sample
     This is important to do as a user may forget they do not have embeddings in their webdataset and neglect to add them using the embedding_folder_url parameter.
     """
     for sample in samples:
+        if 'melspectrogram.npy' not in sample:
+            print("'melspectrogram.npy' not in sample", list(sample.keys()))
+            continue
+        if 'audio_emb.npy' not in sample:
+            print("'audio_emb.npy' not in sample", list(sample.keys()))
+            continue
+
+        sample['text_emb'] = sample.pop('text_emb.npy')
+        sample['audio_emb'] = sample.pop('audio_emb.npy')
+        sample['audio_melspec'] = sample.pop('melspectrogram.npy')
+
+        if hack_audio_embeddings:
+            sample['audio_emb'] = sample['text_emb']
+            warnings.warn("using hacked audio embeddings -- this means there will be no prior")
+
+
+        audio_max_len = 512
+        if sample['audio_melspec'].shape[-1] < audio_max_len:
+            print("too little item:", sample['audio_melspec'].shape)
+            continue
+
+        audio_max_len_start = random.randint(0, sample['audio_melspec'].shape[-1] - audio_max_len)
+        audio_max_len_end = audio_max_len_start + audio_max_len
+
+        sample['audio_melspec'] = sample['audio_melspec'][:, : , audio_max_len_start:audio_max_len_end]
+
         try:
             for key in required_keys:
                 assert key in sample, f"Sample {sample['__key__']} missing {key}. Has keys {sample.keys()}"
@@ -123,7 +157,7 @@ def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
                 break
 key_verifier = wds.filters.pipelinefilter(verify_keys)
 
-class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
+class AudioEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
     """
     A fluid interface wrapper for DataPipline that returns image embedding pairs
     Reads embeddings as npy files from the webdataset if they exist. If embedding_folder_url is set, they will be inserted in from the alternate source.
@@ -132,14 +166,16 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
     def __init__(
             self,
             urls,
-            img_embedding_folder_url=None,
+            audio_embeddings_url=None,
+            audio_melspectrogram_url=None,
             text_embedding_folder_url=None,
             index_width=None,
-            img_preproc=None,
+            audio_mepspec_preproc=None,
             extra_keys=[],
             handler=wds.handlers.reraise_exception,
             resample=False,
-            shuffle_shards=True
+            shuffle_shards=True,
+            hack_audio_embeddings=False
     ):
         """
         Modeled directly off of the WebDataset constructor
@@ -149,7 +185,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             Webdataset image keys should align with the index of the embedding. This means missing image indices must have a corresponding embedding of all zeros.
         :param index_width: The number of digits in the index. This is used to align the embedding index with the image index.
             For example, if a file in the webdataset shard 3 is named 0003039.jpg, we know the shard is 4 digits and the last 3 digits are the index_width.
-        :param img_preproc: This function is run on the img before it is batched and returned. Useful for data augmentation or converting to torch tensor.
+        :param audio_mepspec_preproc: This function is run on the img before it is batched and returned. Useful for data augmentation or converting to torch tensor.
         :param handler: A webdataset handler.
         :param resample: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
         :param shuffle_shards: If true, shuffle the shards before resampling. This cannot be true if resample is true.
@@ -157,21 +193,17 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
 
         """
         super().__init__()
-        keys = ["jpg", "emb"] + extra_keys
-        # if img_embedding_folder_url is not None:
-        #     keys.append("img_emb")
-        # if text_embedding_folder_url is not None:
-        #     keys.append("text_emb")
-        # keys.extend(extra_keys)
+        keys = ["audio_melspec", "audio_emb"] + extra_keys
+
         self.key_map = {key: i for i, key in enumerate(keys)}
         self.resampling = resample
-        self.img_preproc = img_preproc
+        self.audio_mepspec_preproc = audio_mepspec_preproc
         # If s3, check if s3fs is installed and s3cmd is installed and check if the data is piped instead of straight up
         if (isinstance(urls, str) and "s3:" in urls) or (isinstance(urls, list) and any(["s3:" in url for url in urls])):
             # Then this has an s3 link for the webdataset and we need extra packages
             if shutil.which("s3cmd") is None:
                 raise RuntimeError("s3cmd is required for s3 webdataset")
-        if (img_embedding_folder_url is not None and "s3:" in img_embedding_folder_url) or (text_embedding_folder_url is not None and "s3:" in text_embedding_folder_url):
+        if (audio_melspectrogram_url is not None and "s3:" in audio_melspectrogram_url) or (text_embedding_folder_url is not None and "s3:" in text_embedding_folder_url):
             # Then the embeddings are being loaded from s3 and fsspec requires s3fs
             try:
                 import s3fs
@@ -185,47 +217,55 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             self.append(wds.SimpleShardList(urls))
             if shuffle_shards:
                 self.append(wds.filters.shuffle(1000))
-        
-        if img_embedding_folder_url is not None:
-            # There may be webdataset shards that do not have a embedding shard associated with it. If we do not skip these, they would cause issues.
-            self.append(skip_unassociated_shards(embeddings_url=img_embedding_folder_url, handler=handler))
-        if text_embedding_folder_url is not None:
-            self.append(skip_unassociated_shards(embeddings_url=text_embedding_folder_url, handler=handler))
+
+        # if text_embedding_folder_url is not None:
+        #     self.append(skip_unassociated_shards(embeddings_url=text_embedding_folder_url, handler=handler))
+        # if audio_melspectrogram_url is not None:
+        #     self.append(skip_unassociated_shards(embeddings_url=audio_melspectrogram_url, handler=handler))
 
         self.append(wds.tarfile_to_samples(handler=handler))
-        self.append(wds.decode("pilrgb", handler=handler))
-        if img_embedding_folder_url is not None:
-            # Then we are loading image embeddings for a remote source
-            assert index_width is not None, "Reading embeddings separately requires index width length to be given"
-            self.append(insert_embedding(embeddings_url=img_embedding_folder_url, index_width=index_width, sample_key='img_emb', handler=handler))
-        if text_embedding_folder_url is not None:
-            # Then we are loading image embeddings for a remote source
-            assert index_width is not None, "Reading embeddings separately requires index width length to be given"
-            self.append(insert_embedding(embeddings_url=text_embedding_folder_url, index_width=index_width, sample_key='text_emb', handler=handler))
-        self.append(join_embeddings)
-        self.append(key_verifier(required_keys=keys, handler=handler))
+
+        # if audio_melspectrogram_url is not None:
+        #     # Then we are loading image embeddings for a remote source
+        #     assert index_width is not None, "Reading embeddings separately requires index width length to be given"
+        #     self.append(insert_embedding(embeddings_url=audio_melspectrogram_url, index_width=index_width, sample_key='audio_melspec', handler=handler))
+        # if audio_embeddings_url is not None:
+        #     # Then we are loading image embeddings for a remote source
+        #     assert index_width is not None, "Reading embeddings separately requires index width length to be given"
+        #     self.append(insert_embedding(embeddings_url=audio_embeddings_url, index_width=index_width, sample_key='audio_emb', handler=handler))
+        # if text_embedding_folder_url is not None:
+        #     # Then we are loading image embeddings for a remote source
+        #     assert index_width is not None, "Reading embeddings separately requires index width length to be given"
+        #     self.append(insert_embedding(embeddings_url=text_embedding_folder_url, index_width=index_width, sample_key='text_emb', handler=handler))
+        self.append(wds.decode(handler=handler))
+
+        # self.append(join_embeddings)
+        self.append(key_verifier(required_keys=keys, handler=handler, hack_audio_embeddings=hack_audio_embeddings))
         # Apply preprocessing
         self.append(wds.map(self.preproc))
-        self.append(wds.to_tuple(*keys))
+        # self.append(wds.to_tuple(*keys))
 
     def preproc(self, sample):
         """Applies the preprocessing for images"""
-        if self.img_preproc is not None:
-            sample["jpg"] = self.img_preproc(sample["jpg"])
+        if self.audio_mepspec_preproc is not None:
+            sample["audio_melspec"] = self.audio_mepspec_preproc(sample["audio_melspec"])
         return sample
 
-def create_image_embedding_dataloader(
+def create_audio_embedding_dataloader(
     tar_url,
     num_workers,
     batch_size,
-    img_embeddings_url=None,
-    text_embeddings_url=None,
+    # img_embeddings_url=None,
+    # text_embeddings_url=None,
+    audio_embeddings_url=None,
+    audio_melspectrogram_url=None,
     index_width=None,
     shuffle_num = None,
     shuffle_shards = True,
-    resample_shards = False, 
-    img_preproc=None,
+    resample_shards = False,
+    audio_preproc=None,
     extra_keys=[],
+    hack_audio_embeddings=False,
     handler=wds.handlers.reraise_exception#warn_and_continue
 ):
     """
@@ -243,24 +283,55 @@ def create_image_embedding_dataloader(
     :param resample_shards: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
     :param handler: A webdataset handler.
     """
-    ds = ImageEmbeddingDataset(
+    print("tar_url", tar_url)
+    ds = AudioEmbeddingDataset(
         tar_url,
-        img_embedding_folder_url=img_embeddings_url,
-        text_embedding_folder_url=text_embeddings_url,
+        audio_embeddings_url=audio_embeddings_url,
+        audio_melspectrogram_url=audio_melspectrogram_url,
+        # img_embedding_folder_url=img_embeddings_url,
+        # text_embedding_folder_url=text_embeddings_url,
         index_width=index_width,
         shuffle_shards=shuffle_shards,
         resample=resample_shards,
         extra_keys=extra_keys,
-        img_preproc=img_preproc,
-        handler=handler
+        audio_mepspec_preproc=audio_preproc,
+        handler=handler,
+        hack_audio_embeddings=hack_audio_embeddings,
     )
+
+    # print('ds[0]', next(iter(ds)))
+    # audiocaps_dataset = pd.read_csv('')
+
     if shuffle_num is not None and shuffle_num > 0:
         ds.shuffle(1000)
+
+    def my_collate_fn(batch):
+
+        # audio_melspec_stacked = torch.stack([ x['audio_melspec'] for x in batch ]).permute(0, 2, 1, 3)
+        audio_melspec_stacked = torch.stack([ torch.tensor(x['audio_melspec']) for x in batch ])
+        # print("audio_melspec_stacked", audio_melspec_stacked.shape)
+        # print("audio_melspec_stacked.shape", audio_melspec_stacked.shape)
+        # print("captions", [ x['txt'] for x in batch ])
+        # print("youtube_id", [ x['youtube_id'] for x in batch ])
+        # print("audio_melspec_stacked", audio_melspec_stacked[0, 0, :1, :10])
+        result = {
+            "audio_emb": torch.stack([ torch.tensor(x['audio_emb']) for x in batch ])[:, 0, :],
+            "audio_melspec": audio_melspec_stacked,
+            # "txt": [],
+            # "youtube_id": [],
+            "txt": [ x['txt'] for x in batch ],
+            "youtube_id": [ x['youtube_id'].decode('utf-8') for x in batch ],
+        }
+        # print("result", result)
+        return result
+
     return DataLoader(
         ds,
         num_workers=num_workers,
         batch_size=batch_size,
         prefetch_factor=2,  # This might be good to have high so the next npy file is prefetched
         pin_memory=True,
-        shuffle=False
+        shuffle=False,
+        collate_fn=my_collate_fn,
+        drop_last=True,
     )
